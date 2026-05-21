@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.tmp-playwright/
+.tmp-pw-runtime/
+tmp-pw-runtime/
+test-results/
+*.log
+.env
+.env.*
