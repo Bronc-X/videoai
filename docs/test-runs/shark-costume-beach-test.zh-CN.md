@@ -1,310 +1,111 @@
-# 鲨鱼充气服海边测试用例
+# 鲨鱼充气服四视图测试用例
 
 ## 测试目标
 
-使用产品锁定型工作流，为蓝色充气鲨鱼服生成一个简单的海边搞笑视频。
-
-该测试属于可穿戴充气服品类。在进入鲨鱼 SKU 级 Product Lock Card 之前，必须先继承 `docs/product-video-workflow.md` 中的品类级锁定规则。
+验证 `docs/product-video-workflow.zh-CN.md` 定义的四视图工作流：产品一致性优先，场景和动作都不能压过货对版。
 
 优先级：
 
 1. 货要对版
 2. 动作有趣
-3. 海边场景丰富
+3. 场景丰富
 4. 时长更长
 
-## 1. 产品图上传
+如果场景很好但鲨鱼服产品漂移，本测试失败。
 
-### 已上传产品图
+## 1. 四视图上传
 
-- `C:/Users/Administrator/Desktop/[video-test]/1.png`
-- `C:/Users/Administrator/Desktop/[video-test]/2.png`
-- `C:/Users/Administrator/Desktop/[video-test]/3.jpg`
+需要上传四张核心平行图片：
 
-### 产品图角色
+- 正面图：白色肚皮、横向透明脸窗、垂直拉链、蓝色外边、脚部比例。
+- 左侧图：左侧轮廓、侧面厚度、左侧可见的黑眼/鳃线/侧鳍/接缝。
+- 右侧图：右侧轮廓、橙色鼓风阀方向和高度、右侧侧鳍、侧缝、鞋底。
+- 背面图：纯蓝背部、中轴尾鳍、背部竖缝、黑鞋露出。
 
-- `1.png`：正面图，作为白色肚皮区域、拉链、透明露脸窗口、正面鳍位置和鞋子的权威参考
-- `2.png`：侧面图，作为橙色鼓风机、黑色眼睛、黑色鳃纹、侧鳍、背鳍和侧面轮廓的权威参考
-- `3.jpg`：背面图，作为背鳍、背部身体形状、尾巴/背部结构和背部接缝的权威参考
+细节图可选补充：阀门网格、脸窗反光、拉链、缝线、褶皱或材质。正面、左侧、右侧、背面四张核心图全部上传前不能进入首帧，细节图不阻塞流程。
 
-## 2. Product Lock Card
+## 2. 后台自动锁定点
 
-```json
-{
-  "product_label": "Blue inflatable shark costume",
-  "category": "wearable_inflatable_costume",
-  "costume_type": "shark",
-  "category_lock": [
-    "must remain a wearable inflatable costume",
-    "must not become a real shark",
-    "must not become a cartoon shark",
-    "must not become a plush toy",
-    "must not become a CGI creature",
-    "must preserve inflated fabric, wrinkles, seams, zipper line, fan valve, leg openings, and black shoes"
-  ],
-  "authoritative_views": {
-    "front": "C:/Users/Administrator/Desktop/[video-test]/1.png",
-    "side": "C:/Users/Administrator/Desktop/[video-test]/2.png",
-    "back": "C:/Users/Administrator/Desktop/[video-test]/3.jpg"
-  },
-  "main_identity": [
-    "wearable inflatable shark costume",
-    "bright blue inflatable body",
-    "large white belly panel",
-    "black round side eye",
-    "black curved gill stripes",
-    "side fins",
-    "back fin and tail/back shape",
-    "black shoes visible at bottom"
-  ],
-  "critical_lock_points": [
-    {
-      "name": "blue transparent PVC face-viewing window",
-      "location": "upper front white belly panel",
-      "rules": [
-        "must remain a blue-tinted transparent vinyl window",
-        "must keep shiny reflections and cross seam/reflection lines",
-        "must not become a mouth",
-        "must not become teeth",
-        "must not become a logo, patch, or eye"
-      ]
-    },
-    {
-      "name": "orange circular fan valve",
-      "location": "wearer's left side torso/waist, below side fin root and above hip area",
-      "rules": [
-        "must remain small, flat, circular, orange",
-        "must stay fixed in the same side torso/waist position",
-        "must not move to front belly, chest, back center, fin, tail, or legs",
-        "must not be enlarged, duplicated, hidden, recolored, or reshaped"
-      ]
-    },
-    {
-      "name": "back fin and tail/back structure",
-      "location": "rear body",
-      "rules": [
-        "must not split into extra fins",
-        "must not change into a fish tail",
-        "must not disappear or duplicate"
-      ]
-    }
-  ],
-  "preferred_video_angle": "three-quarter side angle that keeps the transparent front window and orange side fan valve visible",
-  "motion_budget": {
-    "mode": "high_accuracy",
-    "max_rotation_degrees": 8,
-    "allowed_actions": [
-      "gentle inflatable bounce",
-      "small fin lift",
-      "small proud nod",
-      "tiny one-step shuffle"
-    ],
-    "forbidden_actions": [
-      "turn around",
-      "spin",
-      "jump",
-      "walk far",
-      "wild dance",
-      "reveal unseen angles"
-    ]
-  },
-  "status": "pending_user_confirmation"
-}
-```
+系统后台自动锁定以下鲨鱼服约束，不需要用户逐条确认：
 
-## 3. 必需的用户确认
+- 该产品必须始终是可穿戴充气服，不能变成真实鲨鱼、卡通鲨鱼、毛绒玩具、CG 生物或吉祥物。
+- 正面白肚、透明脸窗、拉链只属于正面。
+- 左右侧图分别定义该侧的黑眼、鳃线、橙色鼓风阀、侧鳍、侧缝、厚度和不对称关系。
+- 背部中轴尾鳍、背部竖缝只属于背面。
+- 细节图只用于确认材质、缝线、阀门、脸窗等局部细节，不得变成新装饰或第五个拓扑面。
+- 产品尺寸、比例、体积包络和中等充气轮廓必须保持稳定。
 
-在生成首帧前，系统需要询问：
+## 3. 首帧生成
+
+首帧场景可以是：
 
 ```text
-请确认鲨鱼服的产品锁定点：
-
-0. 这是一件可穿戴充气服，不是真实鲨鱼，也不是吉祥物。是否确认？
-1. 位于白色肚皮上方的蓝色透明 PVC 露脸窗口，是否是关键锁定点？
-2. 位于侧面腰腹位置的橙色圆形鼓风机，是否是关键锁定点？
-3. 背鳍和尾巴/背部结构，是否是关键锁定点？
-4. 推荐视频角度是否为三分之四侧面角度，并且同时保持正面透明窗口和侧面鼓风机可见？
-5. 是否还有遗漏的锁定点？
+明亮超市海鲜区，穿着鲨鱼充气服的人站在冰鲜鱼柜前，像认真挑选晚餐一样低头看鱼。画面有轻微喜剧感，真实电商短视频质感。
 ```
 
-本测试的预期确认结果：
+首帧生成必须遵守：
 
-```text
-通过。透明窗口、橙色鼓风机、侧面鳃纹、背鳍、尾巴/背部形状、拉链、褶皱、接缝和黑色鞋子都是关键锁定点。
-```
+- 基于四张核心图共同生成，可叠加可选细节图作为局部补充。
+- 不平均四张图生成新产品。
+- 不把四张图拼成不可能表面。
+- 默认优先正面或轻微三分之四正面。
+- 看不见的侧面/背面细节自然隐藏，不能挪到错误位置。
+- 全身尽量可见，不裁切脚、阀门、脸窗、尾鳍。
 
-## 4. 首帧生成
+## 4. 首帧审核
 
-### 首帧场景
-
-鲨鱼服被放置在一个海边搞笑场景中。产品仍然是画面主角。
-
-推荐场景：
-
-```text
-阳光明媚的海边小吃摊或柠檬水摊。画面里有沙滩、海水、小沙滩伞、毛巾、冷藏箱，以及一个在背景里觉得好笑的游客。鲨鱼服表现得像一位非常严肃的海边客服经理。
-```
-
-### 首帧 Prompt
-
-```text
-Use the provided product images as exact product references.
-
-Create one realistic vertical 9:16 first-frame image for later image-to-video generation.
-
-Product lock:
-Preserve the same wearable inflatable shark costume exactly. Do not redesign, simplify, replace, recolor, or reinterpret the product.
-
-Category lock:
-This is a wearable inflatable costume. It must not become a real shark, cartoon shark, plush toy, CGI creature, or redesigned mascot. Preserve the inflated nylon/plastic fabric, air-filled volume, wrinkles, seams, zipper line, fan valve, leg openings, and black shoes.
-
-Must preserve:
-- bright blue inflatable body
-- large white front belly panel
-- vertical zipper line
-- blue transparent PVC face-viewing window on the upper white belly panel
-- black round side eye
-- black curved gill stripes
-- side fins with white underside
-- back fin and tail/back structure
-- orange circular fan valve on the wearer's left side torso/waist
-- black shoes
-- fabric wrinkles, seams, folds, and inflatable material
-
-Critical details:
-The blue transparent PVC face-viewing window must stay on the upper front white belly panel. It must look like a blue-tinted transparent vinyl window with shiny reflections and cross seam/reflection lines. It is not a mouth, not teeth, not a logo, not a patch, and not an eye.
-
-The orange circular fan valve must stay small, flat, circular, orange, and located on the side torso/waist below the side fin root and above the hip. Do not move it to the front belly, chest, back center, fin, tail, or legs.
-
-Scene:
-A sunny beach snack stand with sand, ocean, a beach umbrella, towels, and a cooler. A beachgoer in the background looks amused. The costume is acting like a serious beach support manager.
-
-Composition:
-Vertical 9:16. Full body visible. Use a three-quarter side angle that keeps both the front transparent window and orange side fan valve visible. Do not crop head, fins, fan valve, transparent window, zipper, tail, or shoes.
-
-Style:
-Realistic commercial product image, clean lighting, sharp product detail.
-
-Avoid:
-No mouth, no red mouth, no teeth, no shark jaw, no new face opening, no human face visibility, no moved fan valve, no missing transparent window, no redesigned costume, no extra logos, no readable text, no subtitles, no hats, no sunglasses, no accessories, no cartoon, no real shark, no plush toy, no mascot redesign, no morphing, no transformation, no body deformation.
-```
-
-## 5. 首帧审核
-
-用户或审核者必须批准首帧。
-
-审核清单：
-
-- [ ] 透明 PVC 露脸窗口正确
-- [ ] 橙色圆形鼓风机位置正确
-- [ ] 白色肚皮区域和拉链正确
-- [ ] 黑色眼睛和鳃纹正确
-- [ ] 侧鳍正确
-- [ ] 背鳍和尾巴/背部结构合理，且没有复制或乱长
-- [ ] 黑色鞋子可见
-- [ ] 产品完整可见，没有被裁切
-- [ ] 场景没有遮挡关键产品细节
-- [ ] 首帧被批准为锁定视频首帧
-
-如果任何一项失败，必须先重新生成首帧，再进入视频。
-
-## 6. 视频生成
-
-### 视频 Prompt
-
-```text
-Use the provided image as the locked first frame and exact product design.
-The first frame is already approved and correct.
-Generate a beach comedy video by animating this same inflatable shark costume only.
-Do not redesign, reinterpret, replace, or redraw the costume.
-
-STRICT PRODUCT LOCK:
-The inflatable shark costume must remain identical to the first frame in every frame.
-Preserve the exact blue transparent PVC face-viewing window on the upper white belly panel, the orange circular fan valve fixed on the same side torso/waist, the white belly panel, vertical zipper line, black round eye, black curved gill stripes, side fins, back fin, tail/back structure, blue legs, black shoes, all fabric wrinkles, seams, folds, and inflatable material.
-
-CATEGORY LOCK:
-This is a wearable inflatable costume, not a real shark, cartoon shark, plush toy, CGI creature, or redesigned mascot. Preserve the inflated nylon/plastic fabric, air-filled volume, wrinkles, seams, zipper line, fan valve, leg openings, and black shoes.
-
-FRAGILE DETAIL LOCK:
-The face-viewing window must remain a blue-tinted transparent vinyl window with shiny reflections and cross seam lines. It is not a mouth, not teeth, not a logo, not a patch, not an eye, and not decoration.
-
-The orange fan valve must stay small, flat, circular, orange, and fixed in the exact same side torso/waist position. Do not move, enlarge, duplicate, hide, recolor, or reshape it.
-
-The back fin and tail/back structure must not duplicate, split, melt, or turn into a fish tail.
-
-SCENE:
-A sunny beach comedy scene. The same shark costume acts like an overly serious beach support manager at a snack or lemonade stand. Sand, ocean, a beach umbrella, towels, a cooler, and one amused beachgoer are visible in the background.
-
-MOTION:
-High accuracy motion only. Gentle inflatable bounce, one fin slowly points at the stand, one small proud nod, then a tiny one-step shuffle. Body rotation must stay under 8 degrees. Keep the same three-quarter product angle so both the transparent window and orange fan valve remain visible. Do not reveal unseen angles. Do not turn around, walk far, spin, jump, or dance wildly.
-
-CAMERA:
-Vertical 9:16. Stable medium-wide shot. Full body visible most of the time. No scene cuts. No fast zoom. Do not crop the head, fins, transparent window, orange fan valve, zipper, tail, or black shoes.
-
-AUDIO:
-Use off-screen narration only if the model supports audio. The costume itself does not talk and does not open a mouth. Suggested line: "Beach support has arrived." Add soft ocean ambience. No subtitles.
-
-NEGATIVE:
-No mouth, no red mouth, no teeth, no shark jaw, no new face opening, no human face visibility, no moved fan valve, no missing transparent window, no redesigned costume, no extra logos, no readable text, no subtitles, no hats, no sunglasses, no accessories, no cartoon, no real shark, no plush toy, no mascot redesign, no morphing, no transformation, no body deformation, no duplicated back fin, no broken tail.
-```
-
-### 推荐模型设置
-
-使用支持首帧图生视频的模型。
-
-推荐请求设置：
-
-```json
-{
-  "aspect_ratio": "9:16",
-  "duration": 8,
-  "mode": "high_accuracy",
-  "camera": "static_or_slight_push_in",
-  "audio": "optional_off_screen_only"
-}
-```
-
-## 7. 视频审核
-
-抽取以下时间点的帧：
-
-- 0%
-- 25%
-- 50%
-- 75%
-- 100%
+必须人工批准首帧后才能进入视频。
 
 通过清单：
 
-- [ ] 货对版评分至少 90
-- [ ] 透明窗口保持正确
-- [ ] 橙色鼓风机保持正确
-- [ ] 背鳍和尾巴/背部结构保持正确
-- [ ] 没有虚构嘴或牙齿
-- [ ] 没有额外鳍或破损尾巴
-- [ ] 动作足够有趣
-- [ ] 海边场景存在
-- [ ] 全身可见
+- [ ] 鲨鱼服仍然是同一件可穿戴充气服。
+- [ ] 尺寸、比例、外形和中等充气轮廓正确。
+- [ ] 正面白肚、透明脸窗、垂直拉链位置正确。
+- [ ] 左右侧厚度、不对称关系、侧眼和鳃线归位正确。
+- [ ] 橙色鼓风阀方向和位置正确，不能跑到错误侧面。
+- [ ] 背部尾鳍没有挪到正面或侧腰。
+- [ ] 没有多手、多鳍、多尾、虚构嘴、牙齿或配饰。
+- [ ] 产品完整可见，关键细节没有被遮挡。
 
-如果产品失败，使用以下策略重试：
+只要任一 critical 项失败，就重新生成首帧。
+
+## 5. 视频生成
+
+视频动作建议：
 
 ```text
-将身体旋转降低到 5 度。
-移除 shuffle。
-只使用静态镜头。
-简化海边场景。
-要求透明窗口和鼓风机全程可见。
+人物从已确认首帧姿势开始，轻微左右摇摆，抬起一只手鳍像是在跟鱼打招呼，最后回到正面。动作幅度小，稳定镜头。
 ```
 
-## 8. 测试通过定义
+视频必须继承：
 
-只有同时满足以下条件，该测试才算通过：
+- 已批准首帧。
+- 四张核心视图产品硬锁。
+- 可穿戴充气服品类锁。
+- 视角拓扑锁。
+- 体积包络锁。
 
-- 鲨鱼服仍然明显是同一个产品
-- 透明窗口和橙色鼓风机被保留
-- 背鳍和尾巴没有乱掉
-- 视频具备海边搞笑场景
-- 动作小但有趣
+默认高一致性动作预算：
 
-如果场景很好但产品漂移，该测试失败。
+- 旋转 0-8 度。
+- 小幅弹动。
+- 小幅手鳍动作。
+- 极小一步位移。
+- 不转身、不跳、不快速跳舞、不切镜头、不展示未经批准的新角度。
 
+## 6. 视频质检
+
+抽查 0%、25%、50%、75%、100%。
+
+通过清单：
+
+- [ ] 货对版评分至少 90。
+- [ ] 透明脸窗保持正确。
+- [ ] 橙色鼓风阀保持正确。
+- [ ] 鳃线数量和位置保持正确。
+- [ ] 尾鳍和背部结构保持正确。
+- [ ] 没有虚构嘴、牙齿、额外手臂或额外鳍。
+- [ ] 动作小但有趣。
+- [ ] 场景存在且不遮挡产品。
+
+如果产品漂移，重试必须降低动作和场景复杂度，而不是继续追求更炫的画面。

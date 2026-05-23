@@ -1,604 +1,195 @@
-# Product-Locked Image-to-Video Workflow
+# Product-Consistency-First Four-View Image-to-Video Workflow
 
 ## Goal
 
-Build a repeatable product video workflow where product accuracy is more important than motion, scene richness, or duration.
+This project has one fixed product goal: generate ecommerce product videos while preserving product identity before motion, scene richness, or duration.
 
 Priority order:
 
-1. Product accuracy
+1. Product consistency
 2. Interesting motion
 3. Rich scene
 4. Longer duration
 
-The video model should not be asked to invent or reinterpret the product. It should only animate an already approved first frame under strict motion limits.
+If motion or scene richness conflicts with product fidelity, product fidelity wins.
 
-## Product Category
+## Visible Workflow
 
-This workflow is designed for wearable inflatable costume products.
-
-Examples:
-
-- Inflatable shark costume
-- Inflatable frog costume
-- Inflatable dinosaur or T-rex costume
-- Inflatable sumo costume
-- Inflatable lion costume
-- Other wearable inflatable animal, character, or novelty costumes
-
-These products share the same core risks:
-
-- The model may turn a wearable costume into a real animal or cartoon mascot.
-- The model may add a mouth, teeth, eyes, fur, claws, or accessories that do not exist on the product.
-- The model may move or remove the fan valve.
-- The model may hide or change the human face window, zipper, or entry opening.
-- The model may break tail, fin, ear, mane, horn, limb, or back structures during motion.
-- The model may remove the inflated fabric texture and make the product look like rubber, plush, CGI, or a real creature.
-
-The product must always remain a wearable inflatable costume.
-
-## Workflow Overview
+Only four user-facing steps are exposed:
 
 ```text
-Product image upload
--> Product Lock Card
--> User confirmation
--> First-frame generation
--> First-frame review
--> Video generation
--> Video quality review
--> Accept or retry with stricter limits
+Upload four views -> Generate first frame -> Generate video -> QA video
 ```
 
-## 1. Product Image Upload
+The product-lock step is internal and automatic. It must not appear as a separate user step, and users should not click through a redundant product-lock confirmation. Users approve the generated first frame instead.
 
-### 1.0 Inflatable Costume Category Lock
+## 1. Four-View Upload
 
-Every product in this category should automatically receive a category-level lock before SKU-specific details are added.
-
-Default category lock:
-
-```text
-This product is a wearable inflatable costume.
-It must remain a real inflatable wearable product, not a real animal, not a cartoon character, not a plush toy, not a CGI creature, and not a redesigned mascot.
-
-Preserve the inflated nylon/plastic fabric, wrinkles, seams, folds, air-filled volume, zipper or entry line, leg openings, visible shoes or foot covers, side/back appendages, and the fan valve or air inlet.
-
-Do not add new body parts, facial features, teeth, claws, fur, scales, accessories, logos, text, or patterns unless they exist in the uploaded product images.
-```
-
-This category lock is always combined with the SKU-level Product Lock Card.
-
-### 1.1 Required Images
-
-Minimum input:
+The upload stage requires four equal core product images:
 
 - Front view
-- Side view
+- Left-side view
+- Right-side view
 - Back view
 
-Recommended input:
+There is no primary image plus optional reference among the core views. All four core images are product-identity inputs. Detail images are optional supplements for fragile local evidence, not a required topology view.
 
-- Front view
-- Left side view
-- Right side view
-- Back view
-- Close-up of each fragile detail
-- Optional real usage image, if available
+Rules:
 
-Fragile details are parts that video models often move, erase, resize, or redesign.
+- Front, left-side, right-side, and back images are required before first-frame generation.
+- Uploading only the front image must not advance the workflow.
+- The frontend sends `image_urls` with exactly four readable images.
+- Optional detail images are sent as `detail_image_urls`; they may refine valve mesh, face-window reflections, zipper teeth, stitching, wrinkles, or material, but they do not block first-frame generation.
+- The backend rejects `blob:` preview URLs and accepts only `data:image/` or `http(s)` image URLs.
+- `foreground_source_url` is not part of this workflow.
 
-Examples:
+## 2. Internal Product Lock
 
-- Transparent windows
-- Valves, buttons, switches, logos, vents
-- Handles, straps, zippers, wheels, feet, shoes
-- Fins, tails, ears, sleeves, openings, seams
-- Printed graphics or repeated patterns
-- Manes, horns, snouts, crowns, bellies, mouths printed on fabric, claws printed on fabric
+After four-view upload, the system automatically derives a product consistency contract.
 
-### 1.1.1 Inflatable Costume Image Requirements
+The contract includes:
 
-For inflatable costumes, the upload flow should request these views whenever possible:
+- Category lock: the product remains a wearable inflatable costume.
+- Four-view topology: front, left side, right side, and back views define physical placement.
+- Fragile details: valve, face window, zipper, tail fin, gill stripes, shoes, wrinkles, seams. Optional details strengthen these local locks only.
+- Forbidden changes: no redraw, averaging, collage, relocation, duplication, removal, resizing, or restyling.
+- Volume envelope: preserve size, proportion, thickness, and medium-inflated silhouette.
 
-- Full front view, showing face window, belly panel, zipper, or printed face
-- Full side view, showing fan valve, arm/fin/leg shape, and side profile
-- Full back view, showing tail, back fin, mane, zipper, or rear seam layout
-- Close-up of fan valve or air inlet
-- Close-up of face-viewing window or human face opening
-- Close-up of special appendages, such as tail, fin, ears, mane, horns, claws, or belly shape
+The four views are topology maps for the same physical product, not collage material.
 
-The system should warn the user if no image shows the fan valve or face opening, because those parts are high-risk drift points.
+## 3. First Frame
 
-### 1.2 Image Requirements
-
-Uploaded product images should meet these requirements:
-
-- Same SKU and same colorway across all images
-- Product is clear, sharp, and not blocked
-- Product is not cropped at important edges
-- Product fills enough of the image to expose details
-- Lighting is neutral enough to identify true colors
-- No heavy filter, stylized rendering, or unrelated product mixed in
-- White or clean background preferred
-
-If the images conflict with each other, the system should stop and ask the user which image is authoritative.
-
-### 1.3 System Extraction
-
-After upload, the system creates a Product Lock Card.
-
-The Product Lock Card must include:
-
-- Product name or temporary label
-- Costume type
-- Category-level lock
-- Main visual identity
-- Required visible landmarks
-- Fragile details
-- Forbidden changes
-- Preferred camera angle
-- Maximum safe motion
-- User confirmation status
-
-Example schema:
-
-```json
-{
-  "product_label": "Blue inflatable shark costume",
-  "category": "wearable_inflatable_costume",
-  "costume_type": "shark",
-  "category_lock": [
-    "must remain a wearable inflatable costume",
-    "must not become a real animal, cartoon character, plush toy, CGI creature, or redesigned mascot",
-    "must preserve inflated fabric, wrinkles, seams, zipper or entry line, leg openings, foot covers or shoes, and fan valve"
-  ],
-  "main_identity": [
-    "bright blue inflatable wearable body",
-    "large white front belly panel",
-    "black round eye",
-    "black curved gill stripes"
-  ],
-  "locked_landmarks": [
-    {
-      "name": "blue transparent PVC face-viewing window",
-      "location": "upper front white belly panel",
-      "must_remain_visible": true,
-      "forbidden_changes": [
-        "must not become a mouth",
-        "must not become teeth",
-        "must not become a logo",
-        "must not move"
-      ]
-    }
-  ],
-  "fragile_details": [],
-  "preferred_angle": "three-quarter side angle that shows front window and side valve",
-  "max_rotation_degrees": 8,
-  "status": "pending_user_confirmation"
-}
-```
-
-### 1.3.1 Costume Type Templates
-
-The system should use the costume type to prefill likely lock points. The user can edit these before generation.
-
-Shark:
-
-- Fins
-- Tail or back fin structure
-- Gill stripes
-- Side eye
-- Belly panel
-- Face-viewing window
-- Fan valve
-
-Frog:
-
-- Large eye shapes
-- Mouth or smile print, if present
-- Belly panel
-- Webbed hands or feet, if present
-- Face-viewing window or face opening
-- Fan valve
-
-Dinosaur or T-rex:
-
-- Head shape and snout
-- Printed or attached teeth, only if present in product photos
-- Small arms
-- Tail
-- Back ridges or spikes, if present
-- Belly panel
-- Face opening
-- Fan valve
-
-Sumo:
-
-- Round inflated body silhouette
-- Printed belt or mawashi area
-- Head/hair print or head opening
-- Arm and leg openings
-- Fabric folds and belly shape
-- Fan valve
-
-Lion:
-
-- Mane shape and color
-- Face opening or printed face
-- Ears
-- Tail
-- Paws or foot covers
-- Belly panel, if present
-- Fan valve
-
-Generic inflatable costume:
-
-- Main body silhouette
-- Face-viewing window or face opening
-- Fan valve or air inlet
-- Zipper or entry line
-- Arm, leg, and foot openings
-- Special appendages
-- Printed details
-- Fabric wrinkles and seams
-
-### 1.3.2 High-Risk Drift Points
-
-For all inflatable costumes, these are treated as high-risk by default:
-
-- Fan valve or air inlet
-- Face-viewing window or human face opening
-- Zipper or entry seam
-- Tail, back fin, mane, spikes, horns, ears, or other appendages
-- Foot covers, black shoes, or visible footwear
-- Printed facial features
-- Belly panel or central color block
-
-The Product Lock Card should mark these as critical unless the user explicitly downgrades them.
-
-### 1.4 User Confirmation
-
-The system must ask the user to confirm the Product Lock Card before generating the first frame.
-
-User-facing confirmation prompt:
+The first-frame model solves only this task:
 
 ```text
-Please confirm the product lock points before first-frame generation.
-
-1. Are these the correct must-preserve product details?
-2. Are any details missing?
-3. Which uploaded image is the most authoritative if the model must choose one?
-4. Where is the fan valve or air inlet?
-5. Where is the face-viewing window or human face opening?
-6. Which appendages must not change, such as tail, fins, ears, mane, spikes, horns, arms, legs, or foot covers?
+Create one product-in-scene image while preserving the product structure defined by all four views.
 ```
 
-The user can:
+Rules:
 
-- Approve
-- Edit lock points
-- Mark a detail as critical
-- Upload more detail images
-- Select the authoritative product view
+- Use the four uploaded core images as equal topology constraints.
+- Use optional detail images only as auxiliary local evidence.
+- Product consistency outranks the user scene prompt.
+- Do not average four images into a new product.
+- Do not combine all visible details into an impossible surface.
+- Choose one physically valid camera family: front, left side, right side, or rear.
+- Hide details that are not visible from the chosen angle instead of moving them.
+- Keep the full product visible and avoid cropping critical details.
 
-Do not continue to first-frame generation while the Product Lock Card is unconfirmed.
+## 4. First-Frame Review
 
-## 2. First-Frame Generation
-
-### 2.1 Purpose
-
-The first frame is the approved product-in-scene image that later becomes the exact starting frame for video generation.
-
-The first-frame model should solve only this problem:
-
-```text
-Place the correct product into the chosen scene while preserving product structure.
-```
-
-It should not be allowed to creatively redesign the product.
-
-### 2.2 First-Frame Strategy
-
-Preferred strategy:
-
-1. Use the most authoritative product view as the main subject.
-2. Use other views only to preserve structure and fragile details.
-3. Generate the requested scene around the product.
-4. Keep product angle close to a known uploaded angle.
-5. Avoid angles that require the model to invent unseen product geometry.
-
-For complex products, do not ask for a dramatic pose in the first frame. Use a stable pose that exposes the critical details.
-
-For inflatable costumes, the first frame should normally use a three-quarter angle that keeps the fan valve and face opening/window visible when possible. If those two details cannot both be visible, the user must choose which detail is more important for the specific video.
-
-### 2.3 First-Frame Prompt Template
-
-```text
-Use the provided product images as exact product references.
-
-Primary task:
-Create one realistic first-frame image for later image-to-video generation.
-
-Product lock:
-Preserve the product design exactly. Do not redesign, simplify, replace, recolor, or reinterpret the product.
-
-Category lock:
-This is a wearable inflatable costume. It must not become a real animal, cartoon character, plush toy, CGI creature, or redesigned mascot. Preserve the inflated fabric, air-filled volume, wrinkles, seams, zipper or entry line, fan valve, leg openings, and foot covers or visible shoes.
-
-Must preserve:
-{{LOCKED_LANDMARKS}}
-
-Fragile details:
-{{FRAGILE_DETAILS}}
-
-Scene:
-{{SCENE_DESCRIPTION}}
-
-Composition:
-{{PREFERRED_ANGLE}}
-Full product visible.
-Do not crop any critical details.
-Leave enough space around the product for small motion.
-
-Style:
-Realistic commercial product image, clean lighting, sharp product detail.
-
-Avoid:
-{{FORBIDDEN_CHANGES}}
-No logos, no random text, no watermark, no invented accessories, no deformed product parts.
-```
-
-### 2.4 First-Frame Review
-
-The generated first frame must be reviewed before video generation.
+The generated first frame must be approved before video generation.
 
 Review checklist:
 
-- Product remains a wearable inflatable costume
-- Product shape matches the uploaded references
-- Colors match
-- Critical landmarks are visible
-- Fragile details are in the correct location
-- No new mouth, logo, accessory, pattern, or structural part was invented
-- Product is not cropped
-- Product angle is safe for video
-- Scene does not hide key product details
+- Same wearable inflatable product.
+- Same size, proportion, silhouette, thickness, and inflation level.
+- Critical details are present and in the correct physical locations, including left/right side asymmetry and valve direction.
+- No invented limbs, fins, tails, valves, windows, mouths, teeth, logos, or accessories.
+- No key product detail is cropped or hidden by the scene.
 
-The system should show a review form:
+If the first frame fails, do not proceed to video.
 
-```text
-First-frame review:
+## 5. Video
 
-[ ] Product shape is correct
-[ ] Colors are correct
-[ ] Critical landmarks are correct
-[ ] Fragile details are correct
-[ ] No invented parts
-[ ] Product is fully visible
-[ ] This frame may be used as the locked video first frame
-```
+The video model animates the approved first frame only. It does not reinterpret the product.
 
-If any critical item fails, regenerate or edit the first frame. Do not proceed.
+Default high-consistency motion budget:
 
-## 3. Video Generation
-
-### 3.1 Video Model Role
-
-The video model only animates the approved first frame.
-
-It must not:
-
-- Redesign product geometry
-- Invent unseen angles
-- Move fragile details
-- Add new product features
-- Replace the product with a mascot, cartoon, or related object
-- Turn the inflatable costume into a real animal or creature
-- Invent natural anatomy, fur, scales, claws, teeth, or moving mouth parts not present in the product
-
-### 3.2 Motion Budget
-
-Every video request should choose a motion budget.
-
-High accuracy mode, default for product videos:
-
-- Body rotation: 0-8 degrees
-- Small bounce
-- Small fin/arm/hand movement
+- 0-8 degrees rotation
+- Tiny bounce
+- Small fin/arm movement
 - Tiny one-step shuffle
-- No large walking path
-- No spin, jump, fast dance, or turn-around
-- No full back reveal unless the back view was explicitly approved as safe
+- No turn-around, long walk, jump, fast dance, scene cut, or unapproved new angle
 
-Balanced mode:
+The video prompt must inherit:
 
-- Body rotation: up to 15 degrees
-- Small walk
-- Mild gesture
-- Some scene interaction
+- Approved first frame
+- Four-core-view hard product lock
+- Wearable inflatable category lock
+- View topology lock
+- Volume envelope lock
+- User action prompt at lower priority than product fidelity
 
-Creative mode:
+If the action conflicts with fidelity, ignore the action.
 
-- Larger motion
-- Higher risk of product drift
-- Only use when user accepts lower product accuracy
+## 6. QA And Retry
 
-### 3.3 Video Prompt Template
+Review at least five points:
 
-```text
-Use the provided image as the locked first frame and exact product design.
-The first frame is already approved and correct.
-Generate motion by animating this same product, not by redesigning or reinterpreting it.
-
-STRICT PRODUCT LOCK:
-The product must remain identical to the first frame in every frame.
-Preserve the exact shape, position, scale, and appearance of:
-{{LOCKED_LANDMARKS}}
-
-CATEGORY LOCK:
-This is a wearable inflatable costume, not a real animal, cartoon character, plush toy, CGI creature, or redesigned mascot. Preserve inflated fabric, wrinkles, seams, zipper or entry line, fan valve, leg openings, foot covers or visible shoes, and air-filled body volume.
-
-FRAGILE DETAIL LOCK:
-{{FRAGILE_DETAIL_RULES}}
-
-SCENE:
-{{VIDEO_SCENE}}
-
-MOTION:
-{{MOTION_BUDGET}}
-Keep movement small and controlled.
-Do not reveal unseen angles.
-
-CAMERA:
-{{CAMERA_RULES}}
-
-AUDIO:
-{{AUDIO_RULES}}
-
-NEGATIVE:
-{{NEGATIVE_PROMPT}}
-```
-
-### 3.4 Scene Complexity Rules
-
-If product accuracy is critical:
-
-- Prefer stable camera
-- Prefer full-body or full-product framing
-- Prefer small gestures
-- Prefer simple scene interaction
-- Avoid scene cuts
-- Avoid fast camera motion
-- Avoid full rotation
-- Avoid occlusion from people, props, smoke, water, or bright effects
-
-If the scene is very different from the first frame, use extra caution. A major background change can cause the model to redraw the product.
-
-### 3.5 Video Review
-
-After generation, review at least five frames:
-
-- Start
+- 0%
 - 25%
 - 50%
 - 75%
-- End
+- 100%
 
-Video acceptance checklist:
+Pass criteria:
 
-- Product remains a wearable inflatable costume
-- Product remains the same in all reviewed frames
-- Critical landmarks stay fixed
-- Fragile details do not move, disappear, duplicate, or resize
-- Product does not become a cartoon, mascot, or different object
-- No new mouth, teeth, logo, accessory, or pattern
-- Motion is interesting enough
-- Scene is acceptable
-- No severe crop, blur, or deformation
+- Product accuracy at least 90.
+- Motion interest target at least 70.
+- Scene richness target at least 60.
+- Duration is informational only.
 
-Suggested scoring:
+If product accuracy fails, retry by reducing motion, simplifying scene, using a more static camera, strengthening fragile-detail locks, and shortening duration if needed.
 
-```text
-Product accuracy: 0-100, must be at least 90
-Motion interest: 0-100, target at least 70
-Scene richness: 0-100, target at least 60
-Duration: informational only
-```
+If the scene is good but the product drifts, the generation fails.
 
-If product accuracy is below threshold, the retry must reduce creative freedom:
+## Shark Costume Default Locks
 
-- Reduce rotation
-- Reduce movement
-- Simplify scene
-- Use more static camera
-- Shorten duration if needed
-- Strengthen fragile detail lock
+Front:
 
-## 4. Retry Strategy
+- White belly panel
+- Horizontal transparent face window
+- Vertical zipper below the window
+- Bright blue border
+- White inner arm-fin panels
+- Blue foot covers and black shoes
 
-### 4.1 Product Drift
+Left / Right Sides:
 
-Symptoms:
+- Exactly one black circular eye
+- Exactly five black curved gill stripes
+- Orange circular blower valve on the correct side waist, with correct direction and height
+- Stable side fins, side seams, side thickness, and left/right asymmetry
 
-- Product shape changes
-- Fragile details move
-- Back fins, tails, handles, or openings become wrong
-- Inflatable costume becomes a real animal, cartoon, plush toy, or mascot
-- Natural anatomy appears, such as new teeth, claws, fur, scales, or moving mouth parts
+Back:
 
-Retry:
+- Plain blue back
+- Center back seam
+- Center rear tail fin
+- Back volume must not become an unstructured cylinder
 
-- Use high accuracy motion budget
-- Keep same visible angle
-- Add "do not reveal unseen angles"
-- Reduce body rotation to 5-8 degrees
+Optional Detail Supplements:
 
-### 4.2 Detail Drift
+- Fabric wrinkles
+- Seam tension
+- Valve mesh
+- Transparent face-window reflections
+- Zipper and stitched edges
 
-Symptoms:
+## Engineering Contract
 
-- Valve moves
-- Transparent window becomes mouth or logo
-- Printed pattern changes
-- Face opening changes shape or reveals a human face when it should not
-- Tail, fin, mane, horn, ear, or spike duplicates or melts
+Frontend:
 
-Retry:
+- Four parallel upload cards.
+- Completion disabled until front, left-side, right-side, and back images exist.
+- Detail upload is optional and does not block completion.
+- Changing product images, product type, scene, or aspect ratio invalidates old first frame, video, and QA state.
+- Product-lock step is hidden.
+- Technical URL fields are hidden from users.
+- Image previews use `object-fit: contain`.
 
-- Move fragile detail lock higher in prompt
-- Describe exact location and forbidden interpretations
-- Require detail to remain visible throughout
+Backend:
 
-### 4.3 Scene Failure
+- `/api/first-frame` validates exactly four core `image_urls`.
+- `/api/first-frame` may accept optional `detail_image_urls` as local-detail supplements.
+- `foreground_source_url` is not accepted.
+- Prompt states that four views are topology maps, not collage requirements.
+- Prompt states not to average four views into a new product.
+- Video prompt inherits approved first frame and four-view product lock.
 
-Symptoms:
+Validation:
 
-- Scene does not change
-- Scene hides product
-- Scene dominates product
-
-Retry:
-
-- Keep product lock unchanged
-- Rewrite scene more simply
-- Avoid too many props
-- Use "background changes, product remains locked"
-
-### 4.4 Motion Failure
-
-Symptoms:
-
-- Motion too boring
-- Motion too wild
-- Product deforms during action
-
-Retry:
-
-- Add one clear small action
-- Remove complex action sequence
-- Keep the action near the original pose
-
-## 5. Product Implementation Notes
-
-Future web product modules:
-
-1. Upload module
-2. Product Lock Card editor
-3. User confirmation step
-4. First-frame generator
-5. First-frame approval UI
-6. Video prompt builder
-7. Video generator
-8. Frame sampler and quality review
-9. Retry controller
-10. Final export
-
-Important product behavior:
-
-- Never treat uploaded product images as decorative references only.
-- Always convert product images into explicit lock points.
-- Always ask the user to confirm lock points.
-- Always require first-frame approval before video generation.
-- Always review generated video before marking it successful.
-- Always prioritize product accuracy over duration.
+- Run `npm run test:baseline`.
+- Browser-check four visible steps, four core parallel upload cards, optional detail supplement area, disabled completion, hidden product-lock step, hidden URL fields, and no horizontal overflow.
+- API-check fewer than four images are rejected, and four readable images pass four-view validation before API-key validation.
