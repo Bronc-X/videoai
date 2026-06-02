@@ -39,6 +39,7 @@ Rules:
 - Front, left-side, right-side, and back images are required before first-frame generation.
 - Uploading only the front image must not advance the workflow.
 - The frontend sends `image_urls` with exactly four readable images.
+- `image_urls` has a fixed semantic order: `image_urls[0]` is front, `image_urls[1]` is left side, `image_urls[2]` is right side, and `image_urls[3]` is back.
 - Optional detail images are sent as `detail_image_urls`; they may refine valve mesh, face-window reflections, zipper teeth, stitching, wrinkles, or material, but they do not block first-frame generation.
 - The backend rejects `blob:` preview URLs and accepts only `data:image/` or `http(s)` image URLs.
 - `foreground_source_url` is not part of this workflow.
@@ -74,7 +75,8 @@ Rules:
 - Do not combine all visible details into an impossible surface.
 - Choose one physically valid camera family: front, left side, right side, or rear.
 - Hide details that are not visible from the chosen angle instead of moving them.
-- Keep the full product visible and avoid cropping critical details.
+- Keep the full product visible from the chosen camera and avoid cropping physically visible critical details.
+- Do not force hidden side or rear details into a front-facing frame. For example, the side valve may be hidden or only barely visible in a front camera, and the rear tail fin should stay hidden unless the camera is rear-facing.
 
 ## 4. First-Frame Review
 
@@ -88,11 +90,15 @@ Review checklist:
 - No invented limbs, fins, tails, valves, windows, mouths, teeth, logos, or accessories.
 - No key product detail is cropped or hidden by the scene.
 
+All critical checklist items must be explicitly judged as pass or fail before the first frame can be approved. Any failed critical item means the first frame fails and must be regenerated; do not approve by leaving failed details unchecked.
+
 If the first frame fails, do not proceed to video.
 
 ## 5. Video
 
 The video model animates the approved first frame only. It does not reinterpret the product.
+
+The approved first frame is the direct video media input. The four views remain a text contract and metadata lock unless the selected video API explicitly supports extra visual references. To avoid exposing unverified sides, keep the camera inside the approved first-frame view family by default.
 
 Default high-consistency motion budget:
 
@@ -182,10 +188,12 @@ Frontend:
 Backend:
 
 - `/api/first-frame` validates exactly four core `image_urls`.
+- `/api/first-frame` labels the four core images with their fixed view roles before sending them to multimodal image generation.
 - `/api/first-frame` may accept optional `detail_image_urls` as local-detail supplements.
 - `foreground_source_url` is not accepted.
 - Prompt states that four views are topology maps, not collage requirements.
 - Prompt states not to average four views into a new product.
+- Prompt states not to force physically hidden side or rear details into the chosen camera angle.
 - Video prompt inherits approved first frame and four-view product lock.
 
 Validation:

@@ -178,6 +178,27 @@ const checks = [
       serverSource.includes("buildFirstFramePayload(body)"),
   },
   {
+    name: "first-frame references are bound to explicit view roles",
+    pass:
+      serverSource.includes("CORE_VIEW_INPUT_ORDER") &&
+      serverSource.includes("image_urls[0] = FRONT_VIEW") &&
+      serverSource.includes("image_urls[1] = LEFT_SIDE_VIEW") &&
+      serverSource.includes("image_urls[2] = RIGHT_SIDE_VIEW") &&
+      serverSource.includes("image_urls[3] = BACK_VIEW") &&
+      serverSource.includes("Core reference 1 FRONT_VIEW") &&
+      serverSource.includes("Optional detail supplement") &&
+      !serverSource.includes("imageUrls.map((image) => ({ image }))"),
+  },
+  {
+    name: "first-frame prompt resolves visibility conflicts instead of forcing hidden details",
+    pass:
+      serverSource.includes("Do not force hidden side or rear details into a front-facing frame") &&
+      serverSource.includes("Visible-detail rule") &&
+      serverSource.includes("side valve is optional in a front camera") &&
+      serverSource.includes("rear tail fin is hidden in a front camera") &&
+      !serverSource.includes("no crop of feet, tail, fan valve, or face window"),
+  },
+  {
     name: "user-facing URL fields are hidden from first-frame workflow",
     pass:
       !appSource.includes("已确认首帧 URL") &&
@@ -217,6 +238,42 @@ const checks = [
       serverSource.includes("LOWER PRIORITY USER ACTION ONLY") &&
       serverSource.includes("buildVideoPayload(body)") &&
       serverSource.includes("buildProductVideoPrompt"),
+  },
+  {
+    name: "video request carries four-view context and does not overclaim visual inputs",
+    pass:
+      appSource.includes("image_urls: requiredUrls") &&
+      appSource.includes("detail_image_urls: detailUrls") &&
+      serverSource.includes("const readableImages = Array.isArray(image_urls)") &&
+      serverSource.includes("Approved first frame is the direct video media input") &&
+      serverSource.includes("FOUR-VIEW TEXT CONTRACT") &&
+      serverSource.includes("Keep the camera inside the approved first-frame view family") &&
+      !serverSource.includes("The approved first frame plus the uploaded front, left-side, right-side, and back core references are the non-negotiable source of truth"),
+  },
+  {
+    name: "first-frame approval is gated by critical review checklist",
+    pass:
+      appSource.includes("firstFrameReviewChecks") &&
+      appSource.includes("allFirstFrameReviewChecksPassed") &&
+      appSource.includes("setFirstFrameReviewState") &&
+      appSource.includes("ALL_CRITICAL_FIRST_FRAME_CHECKS_REQUIRED") &&
+      appSource.includes("disabled={!props.allReviewChecksPassed") &&
+      appSource.includes("review-checklist") &&
+      appSource.includes("onReviewCheck"),
+  },
+  {
+    name: "first-frame review supports explicit pass and fail decisions",
+    pass:
+      appSource.includes('type ReviewDecision = "pending" | "pass" | "fail"') &&
+      appSource.includes("failedFirstFrameReviewChecks") &&
+      appSource.includes("hasFailedFirstFrameReviewChecks") &&
+      appSource.includes('decision === "fail"') &&
+      appSource.includes("首帧审核未通过") &&
+      appSource.includes("重新生成首帧") &&
+      appSource.includes("正确") &&
+      appSource.includes("错误") &&
+      !appSource.includes("Record<ReviewCheckId, boolean>") &&
+      !appSource.includes('type="checkbox"'),
   },
   {
     name: "shark costume identity locks are explicit",
@@ -308,7 +365,7 @@ const checks = [
     pass:
       serverSource.includes("DASHSCOPE_IMAGE_GENERATION_PATH") &&
       serverSource.includes("buildDashScopeImagePayload") &&
-      serverSource.includes("imageUrls.map((image) => ({ image }))") &&
+      serverSource.includes("buildLabeledImageContent(imageUrls)") &&
       serverSource.includes('kind === "video" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload)') &&
       serverSource.includes('isDashScopeUrl(upstreamUrl) && kind === "video"') &&
       appSource.includes("findUrlByKey(record.output"),

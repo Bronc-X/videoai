@@ -6,6 +6,18 @@ const TOAPIS_API_KEY = process.env.TOAPIS_API_KEY || "";
 const DASHSCOPE_IMAGE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_VIDEO_SYNTHESIS_PATH = "/services/aigc/video-generation/video-synthesis";
 const VOLCENGINE_VIDEO_TASKS_PATH = "/contents/generations/tasks";
+const CORE_VIEW_LABELS = [
+  { code: "FRONT_VIEW", contentLabel: "Core reference 1 FRONT_VIEW", label: "front reference; owns the belly, face window, zipper, front proportions, and feet" },
+  { code: "LEFT_SIDE_VIEW", contentLabel: "Core reference 2 LEFT_SIDE_VIEW", label: "left-side reference; owns left thickness, side seam, and left-visible side details" },
+  { code: "RIGHT_SIDE_VIEW", contentLabel: "Core reference 3 RIGHT_SIDE_VIEW", label: "right-side reference; owns right thickness, valve side, side seam, and right-visible side details" },
+  { code: "BACK_VIEW", contentLabel: "Core reference 4 BACK_VIEW", label: "back reference; owns plain back, center back seam, rear tail fin, and rear silhouette" },
+];
+const CORE_VIEW_INPUT_ORDER = [
+  "image_urls[0] = FRONT_VIEW",
+  "image_urls[1] = LEFT_SIDE_VIEW",
+  "image_urls[2] = RIGHT_SIDE_VIEW",
+  "image_urls[3] = BACK_VIEW",
+].join("\n");
 
 function sendJson(res, status, payload) {
   res.writeHead(status, {
@@ -164,6 +176,7 @@ function buildFourViewFirstFramePrompt(payload) {
   return [
     "HIGHEST PRIORITY FOUR-VIEW PRODUCT FIRST-FRAME CONTRACT.",
     "Use the four required core product views as topology maps for the same physical product: front view, left-side view, right-side view, and back view. These four core views define the product shape, proportions, surface ownership, and view-correct placement.",
+    `CORE_VIEW_INPUT_ORDER:\n${CORE_VIEW_INPUT_ORDER}`,
     detailImageCount > 0
       ? `Optional detail supplement images are also provided (${detailImageCount}). Use them only to refine fragile local evidence such as valve mesh, face-window reflection, zipper teeth, seams, wrinkles, stitching, and material. They are auxiliary evidence, not a fifth topology surface.`
       : "No optional detail supplement image is provided. Infer fragile local details only from the four required core views and locked-node contract.",
@@ -185,6 +198,8 @@ function buildFourViewFirstFramePrompt(payload) {
     "Do not satisfy product consistency by showing all reference details in one generated frame. Product consistency means correct physical placement and preserved shape, not maximum visible details.",
     "Do not merge details from different views into one impossible surface. The front belly/window/zipper belong only to the front-facing surface. Left-side details stay on the left side. Right-side details stay on the right side. The rear tail fin belongs on the back centerline only, never on the front belly or side waist.",
     "For a front three-quarter view, show the front belly/window/zipper and only a narrow side edge; do not attach the back tail fin to the visible side. For a left-side or right-side view, obey that side's reference exactly; the front transparent window may only appear as a thin edge, not as a large side panel. For a rear view, show the centered back tail fin and back seam; do not show the front window or gill stripes on the back.",
+    "Visible-detail rule: in a front camera, the face window and zipper are mandatory, the side valve is optional in a front camera only if it is naturally visible on a thin side edge, and the rear tail fin is hidden in a front camera unless the product is explicitly rear-facing.",
+    "Do not force hidden side or rear details into a front-facing frame. Never move the side valve, zipper, tail fin, gill stripes, or face window just to make them visible.",
     "If the chosen camera angle cannot physically show a locked detail, hide it naturally instead of moving it to a wrong location.",
     "SHAPE AND VOLUME ENVELOPE LOCK:",
     "Preserve the shared four-view silhouette: medium-inflated wearable shark costume, not skinny, not overinflated, not spherical. Keep a rounded but not pointed shark head, thick soft torso, shoulder-to-body width from the references, separated padded legs, loose wrinkled foot covers, and small black shoes visible.",
@@ -199,7 +214,7 @@ function buildFourViewFirstFramePrompt(payload) {
     nodeLines ? `Confirmed locked details:\n${nodeLines}` : "Confirmed locked details: preserve every visible product structure from the uploaded references.",
     "Backend extraction priority: front view locks belly/window/zipper/front proportions; left and right side views lock side thickness, asymmetry, eye/gill/valve/fins/seams and valve direction; back view locks tail fin, back seam, rear silhouette, and rear color field; optional detail images only strengthen fragile local details.",
     `LOWER PRIORITY SCENE ONLY:\n${scenePrompt || "Keep a realistic ecommerce product-video setting."}`,
-    "Composition rule: full product body visible, no crop of feet, tail, fan valve, or face window. Realistic ecommerce short-video still frame.",
+    "Composition rule: full product body visible for the chosen camera, no crop of physically visible feet, face window, zipper, side valve, fins, or tail. Realistic ecommerce short-video still frame.",
   ].join("\n\n");
 }
 
@@ -237,6 +252,12 @@ function buildProductVideoPrompt(payload) {
   const productType = typeof payload.product_type === "string" ? payload.product_type.trim() : "wearable inflatable product";
   const motionRule = typeof payload.motion_rule === "string" ? payload.motion_rule.trim() : "Keep motion small and product-safe.";
   const lockedNodes = Array.isArray(payload.locked_nodes) ? payload.locked_nodes : [];
+  const readableImages = Array.isArray(payload.image_urls)
+    ? payload.image_urls.filter((item) => typeof item === "string" && item.trim())
+    : [];
+  const readableDetailImages = Array.isArray(payload.detail_image_urls)
+    ? payload.detail_image_urls.filter((item) => typeof item === "string" && item.trim())
+    : [];
   const nodeLines = lockedNodes
     .filter((node) => node && typeof node === "object")
     .map((node) => {
@@ -249,7 +270,10 @@ function buildProductVideoPrompt(payload) {
 
   return [
     "HIGHEST PRIORITY PRODUCT CONSISTENCY VIDEO CONTRACT.",
-    "FOUR-VIEW PRODUCT HARD LOCK. The approved first frame plus the uploaded front, left-side, right-side, and back core references are the non-negotiable source of truth for the product body. Optional detail supplements may refine fragile local details, but they never override core view topology.",
+    "FOUR-VIEW PRODUCT HARD LOCK. Approved first frame is the direct video media input. FOUR-VIEW TEXT CONTRACT: use the uploaded core reference order as product metadata, not as extra visible surfaces. If the video API cannot accept extra visual references, keep motion inside the approved first-frame evidence instead of inventing or revealing unverified sides.",
+    readableImages.length === 4
+      ? `Four-view metadata supplied:\n${CORE_VIEW_INPUT_ORDER}\nOptional detail supplements supplied: ${readableDetailImages.length}.`
+      : "Four-view metadata is incomplete in the video request, so preserve the approved first frame and do not introduce any new product angle.",
     "Animate the exact same product only. The video may change pose and scene motion, but the product itself must be locked dead across all frames: no silhouette drift, no proportion drift, no missing detail, no invented detail, no material change, and no style reinterpretation.",
     `Product type: ${productType}. It must remain the same wearable inflatable product throughout the video.`,
     "Preserve all identity-critical product details from frame 1 to the final frame. Do not redesign, simplify, restyle, recolor, or reinterpret the product.",
@@ -258,6 +282,7 @@ function buildProductVideoPrompt(payload) {
     "VIEW TOPOLOGY LOCK:",
     "FOUR-VIEW REFERENCES ARE TOPOLOGY MAPS, NOT COLLAGE REQUIREMENTS.",
     "PRIMARY CAMERA IS FRONT-FACING BY DEFAULT: preserve the approved first-frame camera unless the user explicitly asks for a side or rear turn; do not switch to side or rear unless the user explicitly asks.",
+    "Keep the camera inside the approved first-frame view family. Do not rotate far enough to expose hidden side or rear surfaces unless those surfaces are already physically visible and correctly placed in the approved first frame.",
     "Choose one primary camera family before rendering and maintain a physically valid camera path through the motion. The video may reveal or hide product surfaces as the camera/subject moves, but it must never paste details from unrelated views onto the wrong surface.",
     "Visibility matrix: front-facing frames may show the front belly/window/zipper plus a thin side edge only; left-side frames may show only structures visible on the left-side reference; right-side frames may show only structures visible on the right-side reference, including the valve if that is the valve side; rear-facing frames may show the rear tail fin, back seam, and plain blue back only.",
     "Do not satisfy product consistency by showing all reference details in one generated frame. Product consistency means correct physical placement and preserved shape, not maximum visible details.",
@@ -286,12 +311,14 @@ function buildVideoPayload(payload) {
     product_type,
     locked_nodes,
     motion_rule,
+    image_urls,
+    detail_image_urls,
     prompt,
     ...upstreamPayload
   } = payload;
   return {
     ...upstreamPayload,
-    prompt: buildProductVideoPrompt({ action_prompt, scene_prompt, product_type, locked_nodes, motion_rule }),
+    prompt: buildProductVideoPrompt({ action_prompt, scene_prompt, product_type, locked_nodes, motion_rule, image_urls, detail_image_urls }),
   };
 }
 
@@ -350,11 +377,27 @@ function isVolcengineUrl(url) {
   }
 }
 
+function buildLabeledImageContent(imageUrls) {
+  return imageUrls.flatMap((image, index) => {
+    const coreView = CORE_VIEW_LABELS[index];
+    if (coreView) {
+      return [
+        { text: `${coreView.contentLabel}: ${coreView.label}.` },
+        { image },
+      ];
+    }
+    return [
+      { text: `Optional detail supplement ${index - CORE_VIEW_LABELS.length + 1}: close-up evidence only; not a topology view and not a new product surface.` },
+      { image },
+    ];
+  });
+}
+
 function buildDashScopeImagePayload(payload) {
   const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
   const imageUrls = Array.isArray(payload.image_urls) ? payload.image_urls.filter((item) => typeof item === "string" && item.trim()) : [];
   const content = [
-    ...imageUrls.map((image) => ({ image })),
+    ...buildLabeledImageContent(imageUrls),
     { text: prompt },
   ];
 

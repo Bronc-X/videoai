@@ -1365,6 +1365,94 @@ textarea:focus {
   background: var(--error);
 }
 
+.review-checklist {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.review-checklist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.review-checklist-head span {
+  color: var(--muted);
+}
+
+.review-check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.86);
+  font-size: 12px;
+}
+
+.review-check.failed {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(254, 242, 242, 0.9);
+}
+
+.review-check span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-check small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.review-decision {
+  display: grid;
+  grid-template-columns: repeat(2, 58px);
+  gap: 6px;
+}
+
+.review-decision button {
+  height: 30px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.review-decision button.active.pass {
+  border-color: rgba(22, 163, 74, 0.45);
+  background: rgba(220, 252, 231, 0.94);
+  color: #15803d;
+}
+
+.review-decision button.active.fail {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(254, 226, 226, 0.95);
+  color: #b91c1c;
+}
+
+.review-fail-banner {
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.92);
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .right-inspector {
   display: grid;
   gap: 24px;

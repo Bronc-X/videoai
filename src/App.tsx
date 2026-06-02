@@ -163,6 +163,43 @@ const initialNodes: LockNode[] = [
   },
 ];
 
+const firstFrameReviewChecks = [
+  {
+    id: "shape-volume",
+    label: "尺寸 / 比例 / 充气体积正确",
+    detail: "保持可穿戴充气服体量，不变瘦、不鼓成球、不变成展示道具。",
+    critical: true,
+  },
+  {
+    id: "front-window-zipper",
+    label: "正面脸窗和拉链归位",
+    detail: "透明脸窗、白肚、垂直拉链只属于正面，不挪到侧面。",
+    critical: true,
+  },
+  {
+    id: "valve-tail-visibility",
+    label: "阀门 / 尾鳍按视角可见",
+    detail: "侧阀和背尾只在物理可见时出现；不可为了展示而挪位。",
+    critical: true,
+  },
+  {
+    id: "no-invented-parts",
+    label: "没有新增或丢失结构",
+    detail: "无新嘴、牙齿、额外鳍、额外手臂、错位阀门或错位尾鳍。",
+    critical: true,
+  },
+] as const;
+
+type ReviewCheckId = (typeof firstFrameReviewChecks)[number]["id"];
+type ReviewDecision = "pending" | "pass" | "fail";
+type FirstFrameReviewState = Record<ReviewCheckId, ReviewDecision>;
+
+const ALL_CRITICAL_FIRST_FRAME_CHECKS_REQUIRED = true;
+
+function createFirstFrameReviewState(): FirstFrameReviewState {
+  return Object.fromEntries(firstFrameReviewChecks.map((check) => [check.id, "pending"])) as FirstFrameReviewState;
+}
+
 const defaultApiSettings: ApiSettings = {
   imageBaseUrl: "https://testvideo.site/v1",
   imagePath: "",
@@ -359,6 +396,7 @@ export function App() {
   );
   const [approvedFirstFrameUrl, setApprovedFirstFrameUrl] = useState("");
   const [firstFrameApproved, setFirstFrameApproved] = useState(false);
+  const [firstFrameReviewState, setFirstFrameReviewState] = useState<FirstFrameReviewState>(() => createFirstFrameReviewState());
   const [firstFrameError, setFirstFrameError] = useState("");
   const [videoError, setVideoError] = useState("");
   const [videoTaskId, setVideoTaskId] = useState("");
@@ -373,6 +411,11 @@ export function App() {
 
   const allLocksConfirmed = lockNodes.every((node) => node.confirmed);
   const autoLockedNodes = useMemo(() => lockNodes.map((node) => ({ ...node, confirmed: true })), [lockNodes]);
+  const failedFirstFrameReviewChecks = firstFrameReviewChecks.filter((check) => firstFrameReviewState[check.id] === "fail");
+  const hasFailedFirstFrameReviewChecks = failedFirstFrameReviewChecks.length > 0;
+  const allFirstFrameReviewChecksPassed = firstFrameReviewChecks.every(
+    (check) => !ALL_CRITICAL_FIRST_FRAME_CHECKS_REQUIRED || !check.critical || firstFrameReviewState[check.id] === "pass",
+  ) && !hasFailedFirstFrameReviewChecks;
   const requiredUrls = slots.map(getSlotImageUrl).filter(Boolean);
   const detailUrls = detailSlots.map(getSlotImageUrl).filter(Boolean);
   const uploadReady = requiredUrls.length === slots.length;
@@ -418,6 +461,8 @@ export function App() {
     action_prompt: videoActionPrompt,
     scene_prompt: scenePrompt,
     product_type: costumeType,
+    image_urls: requiredUrls,
+    detail_image_urls: detailUrls,
     locked_nodes: lockNodes.map(({ code, label, detail, confidence, confirmed }) => ({
       code,
       label,
@@ -448,6 +493,7 @@ export function App() {
   function invalidateGeneratedOutputs() {
     setApprovedFirstFrameUrl("");
     setFirstFrameApproved(false);
+    setFirstFrameReviewState(createFirstFrameReviewState());
     setFirstFrameError("");
     setVideoError("");
     setVideoTaskId("");
@@ -524,6 +570,36 @@ export function App() {
     }
   }
 
+  function updateFirstFrameReviewCheck(id: ReviewCheckId, decision: ReviewDecision) {
+    setFirstFrameApproved(false);
+    if (decision === "fail") {
+      setFirstFrameError("首帧审核未通过。请重新生成首帧。");
+    }
+    setFirstFrameReviewState((current) => {
+      const next = { ...current, [id]: decision };
+      const failed = firstFrameReviewChecks.filter((check) => next[check.id] === "fail");
+      if (failed.length > 0) {
+        setFirstFrameError(`首帧审核未通过：${failed.map((check) => check.label).join("、")}。请重新生成首帧。`);
+      } else {
+        setFirstFrameError("");
+      }
+      return next;
+    });
+  }
+
+  function approveFirstFrame() {
+    if (hasFailedFirstFrameReviewChecks) {
+      setFirstFrameError(`首帧审核未通过：${failedFirstFrameReviewChecks.map((check) => check.label).join("、")}。请重新生成首帧。`);
+      return;
+    }
+    if (!allFirstFrameReviewChecksPassed) {
+      setFirstFrameError("请先逐项确认首帧的尺寸体积、脸窗拉链、阀门尾鳍和新增结构检查。");
+      return;
+    }
+    setFirstFrameApproved(true);
+    setFirstFrameError("首帧已人工确认，可以进入视频生成。");
+  }
+
   async function callBackend(kind: "firstFrame" | "video") {
     setIsSubmitting(true);
     setFirstFrameError("");
@@ -551,6 +627,7 @@ export function App() {
         }
         setApprovedFirstFrameUrl(imageUrl);
         setFirstFrameApproved(false);
+        setFirstFrameReviewState(createFirstFrameReviewState());
         setFirstFrameError("首帧已生成，请人工核对产品尺寸、比例和外形；首帧不过审，不进入视频。");
       }
       const newTaskId = extractTaskId(data);
@@ -740,7 +817,13 @@ export function App() {
               detailViews={detailSlots}
               approvedUrl={approvedFirstFrameUrl}
               isApproved={firstFrameApproved}
-              onApprove={() => setFirstFrameApproved(true)}
+              reviewChecks={firstFrameReviewChecks}
+              reviewState={firstFrameReviewState}
+              allReviewChecksPassed={allFirstFrameReviewChecksPassed}
+              failedReviewChecks={failedFirstFrameReviewChecks}
+              hasFailedReviewChecks={hasFailedFirstFrameReviewChecks}
+              onReviewCheck={updateFirstFrameReviewCheck}
+              onApprove={approveFirstFrame}
               error={firstFrameError}
               canGenerate={firstFrameReady}
               isSubmitting={isSubmitting}
@@ -911,6 +994,12 @@ function FirstFrameStep(props: {
   detailViews: UploadSlot[];
   approvedUrl: string;
   isApproved: boolean;
+  reviewChecks: typeof firstFrameReviewChecks;
+  reviewState: FirstFrameReviewState;
+  allReviewChecksPassed: boolean;
+  failedReviewChecks: typeof firstFrameReviewChecks[number][];
+  hasFailedReviewChecks: boolean;
+  onReviewCheck: (id: ReviewCheckId, decision: ReviewDecision) => void;
   onApprove: () => void;
   error: string;
   canGenerate: boolean;
@@ -990,6 +1079,43 @@ function FirstFrameStep(props: {
               </div>
             )}
           </div>
+          {props.approvedUrl && (
+            <div className="review-checklist">
+              <div className="review-checklist-head">
+                <strong>首帧关键审核</strong>
+                <span>{props.hasFailedReviewChecks ? "审核未通过" : props.allReviewChecksPassed ? "全部通过" : "必须逐项判断"}</span>
+              </div>
+              {props.hasFailedReviewChecks && (
+                <div className="review-fail-banner">
+                  首帧审核未通过：{props.failedReviewChecks.map((check) => check.label).join("、")}。请重新生成首帧。
+                </div>
+              )}
+              {props.reviewChecks.map((check) => (
+                <div className={cn("review-check", props.reviewState[check.id] === "fail" && "failed")} key={check.id}>
+                  <span>
+                    <strong>{check.label}</strong>
+                    <small>{check.detail}</small>
+                  </span>
+                  <div className="review-decision" aria-label={`${check.label}审核结果`}>
+                    <button
+                      type="button"
+                      className={props.reviewState[check.id] === "pass" ? "active pass" : ""}
+                      onClick={() => props.onReviewCheck(check.id, "pass")}
+                    >
+                      正确
+                    </button>
+                    <button
+                      type="button"
+                      className={props.reviewState[check.id] === "fail" ? "active fail" : ""}
+                      onClick={() => props.onReviewCheck(check.id, "fail")}
+                    >
+                      错误
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="parameter-panel">
           <h3>生成参数</h3>
@@ -1060,6 +1186,7 @@ function FirstFrameStep(props: {
             <button
               className={cn("secondary-action full-width", props.isApproved && "approved-action")}
               type="button"
+              disabled={!props.allReviewChecksPassed}
               onClick={props.onApprove}
             >
               <ShieldCheck size={16} />
