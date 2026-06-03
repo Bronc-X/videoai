@@ -1,10 +1,16 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const serverSource = readFileSync(new URL("../server/index.js", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const workflowZhSource = readFileSync(new URL("../docs/product-video-workflow.zh-CN.md", import.meta.url), "utf8");
 const workflowEnSource = readFileSync(new URL("../docs/product-video-workflow.md", import.meta.url), "utf8");
+const sharkPresetFiles = [
+  "../public/product-presets/shark-inflatable/front.png",
+  "../public/product-presets/shark-inflatable/left.png",
+  "../public/product-presets/shark-inflatable/right.png",
+  "../public/product-presets/shark-inflatable/back.jpg",
+].map((path) => new URL(path, import.meta.url));
 
 const checks = [
   {
@@ -104,6 +110,22 @@ const checks = [
       !appSource.includes("source-asset-card"),
   },
   {
+    name: "shark inflatable preset auto-fills four core views",
+    pass:
+      sharkPresetFiles.every((file) => existsSync(file)) &&
+      appSource.includes("SHARK_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("/product-presets/shark-inflatable/front.png") &&
+      appSource.includes("/product-presets/shark-inflatable/left.png") &&
+      appSource.includes("/product-presets/shark-inflatable/right.png") &&
+      appSource.includes("/product-presets/shark-inflatable/back.jpg") &&
+      appSource.includes("createPresetSlots") &&
+      appSource.includes("loadPresetSlotDataUrls") &&
+      appSource.includes('source: "preset"') &&
+      appSource.includes('source: "manual"') &&
+      appSource.includes("getProductPreset(costumeType)") &&
+      appSource.includes("viewUrls: SHARK_INFLATABLE_PRESET_VIEWS.map"),
+  },
+  {
     name: "four uploaded view images are converted to model-readable inputs",
     pass:
       appSource.includes("await readFileAsDataUrl(file)") &&
@@ -155,7 +177,7 @@ const checks = [
       appSource.includes('videoPath: ""') &&
       !appSource.includes("图片路径") &&
       !appSource.includes("视频路径") &&
-      serverSource.includes('proxyJson("/images/generations", buildFirstFramePayload(body), "image")') &&
+      serverSource.includes('proxyJson("/images/edits", buildFirstFramePayload(body), "image")') &&
       serverSource.includes('proxyJson("/responses", buildVideoPayload(body), "video")'),
   },
   {
@@ -176,6 +198,17 @@ const checks = [
       serverSource.includes("If the scene conflicts with product fidelity, simplify the scene") &&
       serverSource.includes("LOWER PRIORITY SCENE ONLY") &&
       serverSource.includes("buildFirstFramePayload(body)"),
+  },
+  {
+    name: "generic first-frame API sends references as image edit inputs",
+    pass:
+      serverSource.includes("buildOpenAIImageEditPayload") &&
+      serverSource.includes("images: imageUrls.map((image_url) => ({ image_url }))") &&
+      serverSource.includes('input_fidelity: "high"') &&
+      serverSource.includes("imageEditSizeFromAspectRatio") &&
+      serverSource.includes("resolveImageEditUrl") &&
+      serverSource.includes('"/images/edits"') &&
+      !serverSource.includes("buildUpstreamPayload"),
   },
   {
     name: "first-frame references are bound to explicit view roles",
@@ -308,17 +341,29 @@ const checks = [
     name: "shape and inflation envelope is locked for image and video",
     pass:
       serverSource.includes("SHAPE AND VOLUME ENVELOPE LOCK") &&
-      serverSource.includes("medium-inflated") &&
-      serverSource.includes("not skinny") &&
-      serverSource.includes("not overinflated") &&
+      serverSource.includes("low-to-medium inflated") &&
+      serverSource.includes("must not become skinny") &&
+      serverSource.includes("fully taut inflated display suit") &&
       serverSource.includes("HUMAN-SCALE SIZE LOCK") &&
+      serverSource.includes("HUMAN-BODY ENVELOPE") &&
       serverSource.includes("not a giant mascot shell") &&
       serverSource.includes("must stay close to the wearer's body scale") &&
-      serverSource.includes("head height and body width must not grow beyond the references") &&
+      serverSource.includes("head height, head width, body width, and side thickness must not grow beyond the references") &&
+      serverSource.includes("giant rounded head, barrel-shaped torso") &&
+      serverSource.includes("full taut mascot shell instead of a person-sized wearable suit") &&
       serverSource.includes("four-view silhouette") &&
       serverSource.includes("45%-55%") &&
-      serverSource.includes("Wrinkle density is a fidelity marker") &&
-      serverSource.includes("No swelling, shrinking, melting, stretching, or smoothing across frames"),
+      serverSource.includes("Wrinkle density and slight looseness are fidelity markers") &&
+      serverSource.includes("No swelling, shrinking, melting, stretching, smoothing, or mascot-shell enlargement across frames"),
+  },
+  {
+    name: "first-frame review rejects overinflated mascot scale",
+    pass:
+      appSource.includes("human-body-envelope") &&
+      appSource.includes("人体体型包络 / 不过度鼓胀") &&
+      appSource.includes("巨大圆顶、桶状身体、站立气球或吉祥物外壳") &&
+      workflowZhSource.includes("人体体型包络：产品必须像真人穿着一件轻到中度充气服") &&
+      workflowZhSource.includes("一旦首帧像巨大吉祥物、桶状气球、全鼓展示道具"),
   },
   {
     name: "DashScope HappyHorse video endpoint is supported",
@@ -350,6 +395,16 @@ const checks = [
       !appSource.includes("<textarea value={props.prompt} readOnly />"),
   },
   {
+    name: "default UI prompts are conservative for product consistency testing",
+    pass:
+      appSource.includes("真人穿着上传四视图中的鲨鱼充气服") &&
+      appSource.includes("全身入镜、身体直立、双脚落地") &&
+      appSource.includes("场景只做背景") &&
+      appSource.includes("人物保持正面姿态和原地站位") &&
+      appSource.includes("镜头稳定、无旋转、无变焦、无大步行走") &&
+      appSource.includes("产品尺寸、人体体型包络、脸窗、拉链、阀门、尾鳍位置全程不变"),
+  },
+  {
     name: "light backend has planned product asset library",
     pass:
       appSource.includes("type ProductAsset") &&
@@ -366,8 +421,8 @@ const checks = [
       serverSource.includes("DASHSCOPE_IMAGE_GENERATION_PATH") &&
       serverSource.includes("buildDashScopeImagePayload") &&
       serverSource.includes("buildLabeledImageContent(imageUrls)") &&
-      serverSource.includes('kind === "video" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload)') &&
-      serverSource.includes('isDashScopeUrl(upstreamUrl) && kind === "video"') &&
+      serverSource.includes("return kind === \"video\" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload)") &&
+      serverSource.includes('isDashScopeUrl(resolvedUpstreamUrl) && kind === "video"') &&
       appSource.includes("findUrlByKey(record.output"),
   },
   {

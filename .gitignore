@@ -4,6 +4,7 @@ dist/
 .tmp-pw-runtime/
 tmp-pw-runtime/
 test-results/
+.codex-video-work/
 *.log
 .env
 .env.*

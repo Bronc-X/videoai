@@ -35,6 +35,7 @@ type UploadSlot = {
   localUrl: string;
   dataUrl?: string;
   file?: File;
+  source?: "preset" | "manual";
 };
 
 type LockNode = {
@@ -97,6 +98,36 @@ const initialDetailSlots: UploadSlot[] = [
   { id: "detail", label: "细节补充图", badge: "DETAIL", hint: "可选：阀门、脸窗、拉链、缝线、褶皱或材质近景", accept: "image/*", fileName: "", localUrl: "" },
 ];
 
+const SHARK_INFLATABLE_TYPE = "鲨鱼充气服";
+const SHARK_INFLATABLE_PRESET_VIEWS = [
+  { slotId: "front", fileName: "shark-front.png", localUrl: "/product-presets/shark-inflatable/front.png" },
+  { slotId: "leftSide", fileName: "shark-left.png", localUrl: "/product-presets/shark-inflatable/left.png" },
+  { slotId: "rightSide", fileName: "shark-right.png", localUrl: "/product-presets/shark-inflatable/right.png" },
+  { slotId: "back", fileName: "shark-back.jpg", localUrl: "/product-presets/shark-inflatable/back.jpg" },
+] as const;
+
+const productPresets = [
+  {
+    productType: SHARK_INFLATABLE_TYPE,
+    views: SHARK_INFLATABLE_PRESET_VIEWS,
+  },
+] as const;
+
+function getProductPreset(productType: string) {
+  return productPresets.find((preset) => preset.productType === productType);
+}
+
+function createPresetSlots(productType: string): UploadSlot[] {
+  const preset = getProductPreset(productType);
+  if (!preset) return initialSlots;
+  return initialSlots.map((slot) => {
+    const view = preset.views.find((item) => item.slotId === slot.id);
+    return view
+      ? { ...slot, fileName: view.fileName, localUrl: view.localUrl, dataUrl: "", source: "preset" }
+      : slot;
+  });
+}
+
 const initialNodes: LockNode[] = [
   {
     id: "front-window-zipper",
@@ -145,9 +176,9 @@ const initialNodes: LockNode[] = [
   },
   {
     id: "fabric-color-silhouette",
-    label: "蓝白色块 / 中等充气轮廓",
+    label: "蓝白色块 / 人体体型包络",
     code: "Moderate_Inflation_Silhouette",
-    detail: "锁定四视图共同的中等充气体型：不能变瘦弱布套，也不能过度鼓成圆球；保留上宽下收、圆顶鲨鱼头、厚实躯干、分腿裤脚和黑鞋露出。",
+    detail: "锁定四视图共同的人穿服体型：充气外壳只比真人肩宽和躯干略宽，不能变成巨大圆顶头、桶状身体、站立气球或吉祥物外壳；保留上宽下收、腰胯收窄、两条独立裤腿、脚套褶皱和黑鞋露出。",
     confidence: 0.95,
     critical: true,
     confirmed: true,
@@ -156,7 +187,7 @@ const initialNodes: LockNode[] = [
     id: "body-volume-envelope",
     label: "体积包络 / 身宽比例",
     code: "Body_Volume_Envelope",
-    detail: "正面白色腹部宽度约占身体总宽 45%-55%，身体厚度保持可穿戴充气服比例；侧面胸腹不能塌陷，背面不能膨胀成无结构圆柱。",
+    detail: "正面白色腹部宽度约占身体总宽 45%-55%；头部宽高、躯干宽度和侧面厚度不得超过四视图参考；侧面胸腹是可穿戴服厚度，不是圆柱气球；背面不能膨胀成无结构圆柱。",
     confidence: 0.93,
     critical: true,
     confirmed: true,
@@ -165,9 +196,15 @@ const initialNodes: LockNode[] = [
 
 const firstFrameReviewChecks = [
   {
+    id: "human-body-envelope",
+    label: "人体体型包络 / 不过度鼓胀",
+    detail: "必须像真人穿着充气服：肩宽、腰胯、分腿和黑鞋接近四视图；一旦变成巨大圆顶、桶状身体、站立气球或吉祥物外壳就判错误。",
+    critical: true,
+  },
+  {
     id: "shape-volume",
     label: "尺寸 / 比例 / 充气体积正确",
-    detail: "保持可穿戴充气服体量，不变瘦、不鼓成球、不变成展示道具。",
+    detail: "保持四视图里的轻到中度充气体量，不变瘦、不鼓成球、不变成展示道具，不能把产品放大到超过真人穿戴尺度。",
     critical: true,
   },
   {
@@ -217,9 +254,9 @@ const productAssetPlan: ProductAsset[] = [
     name: "鲨鱼充气服",
     type: "充气服",
     viewMode: "四视图",
-    viewUrls: [],
+    viewUrls: SHARK_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
     lockedNodeCodes: initialNodes.map((node) => node.code),
-    updatedAt: "规划中",
+    updatedAt: "本地预设",
   },
 ];
 
@@ -366,6 +403,26 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("Read preset image failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function loadPresetSlotDataUrls(preset: NonNullable<ReturnType<typeof getProductPreset>>) {
+  return Promise.all(
+    preset.views.map(async (view) => {
+      const response = await fetch(view.localUrl);
+      if (!response.ok) throw new Error(`Preset image unavailable: ${view.localUrl}`);
+      const dataUrl = await readBlobAsDataUrl(await response.blob());
+      return { slotId: view.slotId, dataUrl };
+    }),
+  );
+}
+
 function getSlotImageUrl(slot?: UploadSlot) {
   if (!slot) return "";
   return slot.dataUrl || "";
@@ -373,10 +430,10 @@ function getSlotImageUrl(slot?: UploadSlot) {
 
 export function App() {
   const [activeStep, setActiveStep] = useState<StepId>("upload");
-  const [slots, setSlots] = useState(initialSlots);
+  const [slots, setSlots] = useState(() => createPresetSlots(SHARK_INFLATABLE_TYPE));
   const [detailSlots, setDetailSlots] = useState(initialDetailSlots);
   const [lockNodes, setLockNodes] = useState(initialNodes);
-  const [costumeType, setCostumeType] = useState("鲨鱼充气服");
+  const [costumeType, setCostumeType] = useState(SHARK_INFLATABLE_TYPE);
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([
@@ -389,10 +446,10 @@ export function App() {
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [motionMode, setMotionMode] = useState<MotionMode>("strict");
   const [scenePrompt, setScenePrompt] = useState(
-    "明亮超市海鲜区，穿着产品的人站在冰鲜鱼柜前，像认真挑选晚餐一样低头看鱼。画面有轻微喜剧感，真实电商短视频质感。",
+    "明亮超市海鲜区，真人穿着上传四视图中的鲨鱼充气服，正面或轻微正面三分之二站在冰鲜鱼柜旁，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度和轻到中度充气体型。",
   );
   const [videoActionPrompt, setVideoActionPrompt] = useState(
-    "人物从已确认首帧姿势开始，轻微左右摇摆，抬起一只手鳍像是在跟鱼打招呼，最后回到正面。动作幅度小，稳定镜头。",
+    "从已确认首帧开始，人物保持正面姿态和原地站位，只做很小的左右重心晃动和一次轻微手鳍抬起；镜头稳定、无旋转、无变焦、无大步行走，产品尺寸、人体体型包络、脸窗、拉链、阀门、尾鳍位置全程不变。",
   );
   const [approvedFirstFrameUrl, setApprovedFirstFrameUrl] = useState("");
   const [firstFrameApproved, setFirstFrameApproved] = useState(false);
@@ -408,6 +465,39 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(apiSettings));
   }, [apiSettings]);
+
+  useEffect(() => {
+    const preset = getProductPreset(costumeType);
+    if (!preset) {
+      invalidateGeneratedOutputs();
+      setSlots(initialSlots);
+      setDetailSlots(initialDetailSlots);
+      setActiveStep("upload");
+      return;
+    }
+    let cancelled = false;
+    invalidateGeneratedOutputs();
+    setSlots(createPresetSlots(costumeType));
+    setDetailSlots(initialDetailSlots);
+    setActiveStep("upload");
+    loadPresetSlotDataUrls(preset)
+      .then((loadedSlots) => {
+        if (cancelled) return;
+        setSlots((current) =>
+          current.map((slot) => {
+            if (slot.source !== "preset") return slot;
+            const loaded = loadedSlots.find((item) => item.slotId === slot.id);
+            return loaded ? { ...slot, dataUrl: loaded.dataUrl } : slot;
+          }),
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) setFirstFrameError(error instanceof Error ? error.message : "Preset images failed to load.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [costumeType]);
 
   const allLocksConfirmed = lockNodes.every((node) => node.confirmed);
   const autoLockedNodes = useMemo(() => lockNodes.map((node) => ({ ...node, confirmed: true })), [lockNodes]);
@@ -506,8 +596,8 @@ export function App() {
     const localUrl = URL.createObjectURL(file);
     invalidateGeneratedOutputs();
     setActiveStep("upload");
-    const updateSlot = (slot: UploadSlot) =>
-      slot.id === id ? { ...slot, file, fileName: file.name, localUrl, dataUrl: "" } : slot;
+    const updateSlot = (slot: UploadSlot): UploadSlot =>
+      slot.id === id ? { ...slot, file, fileName: file.name, localUrl, dataUrl: "", source: "manual" } : slot;
     setSlots((current) => current.map(updateSlot));
     setDetailSlots((current) => current.map(updateSlot));
     const dataUrl = await readFileAsDataUrl(file);
@@ -939,6 +1029,7 @@ function UploadStep(props: {
             </label>
             <strong>{slot.label}</strong>
             <small>{slot.fileName || slot.hint}</small>
+            {slot.source && <span className="asset-source">{slot.source === "preset" ? "本地预设" : "手动上传"}</span>}
           </article>
         ))}
       </div>
@@ -1012,7 +1103,7 @@ function FirstFrameStep(props: {
   return (
     <section className="stage-panel">
       <StageHeader eyebrow="第 2 步" title="四视图合成首帧" />
-      <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意；细节图只补强局部材质和易漂移部位。尺寸、比例、轮廓、阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
+      <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意；细节图只补强局部材质和易漂移部位。人体体型包络、尺寸、比例、轮廓必须接近四视图，不能变成巨大圆顶、桶状身体、站立气球或吉祥物外壳；阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
       <div className="two-col">
         <div className="stack">
           <label className="scenario-card">

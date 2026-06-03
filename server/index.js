@@ -202,11 +202,11 @@ function buildFourViewFirstFramePrompt(payload) {
     "Do not force hidden side or rear details into a front-facing frame. Never move the side valve, zipper, tail fin, gill stripes, or face window just to make them visible.",
     "If the chosen camera angle cannot physically show a locked detail, hide it naturally instead of moving it to a wrong location.",
     "SHAPE AND VOLUME ENVELOPE LOCK:",
-    "Preserve the shared four-view silhouette: medium-inflated wearable shark costume, not skinny, not overinflated, not spherical. Keep a rounded but not pointed shark head, thick soft torso, shoulder-to-body width from the references, separated padded legs, loose wrinkled foot covers, and small black shoes visible.",
-    "HUMAN-SCALE SIZE LOCK: the costume must stay close to the wearer's body scale, not a giant mascot shell. The head height and body width must not grow beyond the references; keep the inflatable shell only slightly larger than the human body inside, with visible human-scale shoulders, legs, and feet.",
-    "Do not enlarge the product into a tall bulky tube, oversized standing balloon, theme-park mascot, or inflated display prop. The original product is roughly body-sized, so preserve that compact wearable scale exactly.",
+    "Preserve the shared four-view HUMAN-BODY ENVELOPE: this is a real person wearing a compact low-to-medium inflated shark costume. The inflatable shell is only modestly larger than the wearer; visible shoulders, narrowed waist/hip transition, separated legs, loose wrinkled foot covers, and small black shoes must stay close to the reference proportions.",
+    "HUMAN-SCALE SIZE LOCK: the costume must stay close to the wearer's body scale, not a giant mascot shell. The head height, head width, body width, and side thickness must not grow beyond the references; keep the inflatable shell only slightly larger than the human body inside.",
+    "Do not enlarge the product into a giant rounded head, barrel-shaped torso, tall bulky tube, oversized standing balloon, theme-park mascot, or inflated display prop. If the result looks like a full taut mascot shell instead of a person-sized wearable suit, it is wrong.",
     "The front white belly panel must stay broad and centered, roughly 45%-55% of total body width. The body sides must gently curve inward toward the legs; do not collapse into a narrow tube and do not expand into a balloon cylinder.",
-    "Wrinkle density is a fidelity marker: keep visible nylon wrinkles and seam tension. Do not smooth the fabric into plastic, rubber, plush, or a clean CGI creature.",
+    "Wrinkle density and slight looseness are fidelity markers: keep visible nylon wrinkles, seam tension, and soft fabric slack. Do not smooth the fabric into plastic, rubber, plush, a clean CGI creature, or a fully taut inflated display suit.",
     "Preserve all product details even when the requested scene changes. The scene may change, but these product marks must remain visible when their side is visible.",
     "Do not remove, move, shrink, recolor, simplify, or invent any product structure. Do not make the product slimmer, taller, shorter, rounder, more muscular, more balloon-like, or more animal-like than the references. Do not add a mouth, teeth, new eyes beyond the single side eye, logo, extra accessories, claws, fur, scales, realistic shark skin, or new decorative graphics.",
     "Do not convert the costume into a clean generic blue-white shark suit. The black side eye, five black gill stripes, orange side blower valve, front transparent face window, vertical zipper, and rear tail fin are identity-critical.",
@@ -289,11 +289,11 @@ function buildProductVideoPrompt(payload) {
     "Maintain view-correct placement through the whole motion. The front belly/window/zipper stay on the front surface, left-side details stay on the left side, right-side details stay on the right side, and rear tail fin stays on the back centerline only; never move a rear tail fin to the side waist, never move the front window onto the side panel, and never combine front, side, and back details on one flat surface.",
     "When the camera rotates, reveal and hide details according to physical visibility. A detail that is not visible from the current angle must remain hidden, not relocated.",
     "SHAPE AND VOLUME ENVELOPE LOCK:",
-    "Maintain the same medium-inflated four-view silhouette through every frame. The costume must not become skinny, deflated, overly tall, overly round, balloon-spherical, muscular, or creature-like.",
-    "HUMAN-SCALE SIZE LOCK: the costume must stay close to the wearer's body scale, not a giant mascot shell. The head height and body width must not grow beyond the references across any frame; keep the inflatable shell only slightly larger than the human body inside.",
-    "Do not let motion inflate or enlarge the product into a tall bulky tube, oversized standing balloon, theme-park mascot, or inflated display prop. The original product is roughly body-sized, so preserve that compact wearable scale exactly.",
-    "Keep the reference body proportions: rounded shark head, thick soft torso, broad centered white belly panel at about 45%-55% of body width, slightly narrowing waist-to-leg transition, separated padded legs, loose wrinkled foot covers, small black shoes visible, side arm fins with white inner panels, and rear tail fin size fixed.",
-    "During motion, volume may wobble slightly like nylon inflatable fabric, but body width, belly panel width, tail size, fin size, and leg thickness must remain stable. No swelling, shrinking, melting, stretching, or smoothing across frames.",
+    "Maintain the same human-body envelope and low-to-medium inflated four-view silhouette through every frame. The costume must not become skinny, deflated, overly tall, overly round, balloon-spherical, muscular, creature-like, or mascot-like.",
+    "HUMAN-SCALE SIZE LOCK: the costume must stay close to the wearer's body scale, not a giant mascot shell. The head height, head width, body width, and side thickness must not grow beyond the references across any frame; keep the inflatable shell only slightly larger than the human body inside.",
+    "Do not let motion inflate or enlarge the product into a giant rounded head, barrel-shaped torso, tall bulky tube, oversized standing balloon, theme-park mascot, or inflated display prop. The original product is roughly body-sized, so preserve that compact wearable scale exactly.",
+    "Keep the reference body proportions: rounded but compact shark head, compact soft torso, broad centered white belly panel at about 45%-55% of body width, slightly narrowing waist-to-leg transition, separated padded legs, loose wrinkled foot covers, small black shoes visible, side arm fins with white inner panels, and rear tail fin size fixed.",
+    "During motion, volume may wobble slightly like nylon inflatable fabric, but head size, body width, belly panel width, tail size, fin size, and leg thickness must remain stable. No swelling, shrinking, melting, stretching, smoothing, or mascot-shell enlargement across frames.",
     nodeLines ? `Confirmed locked details:\n${nodeLines}` : "Confirmed locked details: preserve every visible product structure from the references.",
     `LOWER PRIORITY USER ACTION ONLY:\n${actionPrompt || "Use a simple ecommerce product display motion."}`,
     `Scene continuity:\n${scenePrompt || "Keep the approved first-frame scene."}`,
@@ -420,6 +420,25 @@ function buildDashScopeImagePayload(payload) {
   };
 }
 
+function imageEditSizeFromAspectRatio(value) {
+  if (value === "16:9") return "1536x1024";
+  if (value === "1:1") return "1024x1024";
+  return "1024x1536";
+}
+
+function buildOpenAIImageEditPayload(payload) {
+  const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
+  const imageUrls = Array.isArray(payload.image_urls) ? payload.image_urls.filter((item) => typeof item === "string" && item.trim()) : [];
+  return {
+    model: payload.model,
+    prompt,
+    images: imageUrls.map((image_url) => ({ image_url })),
+    n: 1,
+    size: imageEditSizeFromAspectRatio(payload.aspect_ratio),
+    input_fidelity: "high",
+  };
+}
+
 function normalizeVideoResolution(value) {
   return typeof value === "string" ? value.toLowerCase().replace("1080p", "1080p").replace("720p", "720p") : "1080p";
 }
@@ -487,37 +506,51 @@ function buildDashScopeVideoPayload(payload) {
   };
 }
 
-function buildUpstreamPayload(kind, upstreamUrl, upstreamPayload) {
+function resolveImageEditUrl(upstreamUrl) {
+  try {
+    const parsed = new URL(upstreamUrl);
+    parsed.pathname = parsed.pathname.replace(/\/images\/generations\/?$/i, "/images/edits");
+    return parsed.toString();
+  } catch {
+    return upstreamUrl;
+  }
+}
+
+function buildProxyPayload(kind, upstreamUrl, upstreamPayload) {
   if (isVolcengineUrl(upstreamUrl) && kind === "video") return buildVolcengineVideoPayload(upstreamPayload);
-  if (!isDashScopeUrl(upstreamUrl)) return upstreamPayload;
-  return kind === "video" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload);
+  if (isDashScopeUrl(upstreamUrl)) {
+    return kind === "video" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload);
+  }
+  if (kind === "image") return buildOpenAIImageEditPayload(upstreamPayload);
+  return upstreamPayload;
 }
 
 async function proxyJson(fallbackPath, payload, kind = "generic") {
   const { apiKey, upstreamUrl, upstreamPayload } = pickProxyConfig(payload, fallbackPath, kind);
+  const resolvedUpstreamUrl = kind === "image" && !isDashScopeUrl(upstreamUrl) ? resolveImageEditUrl(upstreamUrl) : upstreamUrl;
 
   if (!apiKey) {
     return {
       status: 400,
       payload: {
         error: "请先填写 API Key。",
-        upstreamUrl,
+        upstreamUrl: resolvedUpstreamUrl,
       },
     };
   }
 
-  const response = await fetch(upstreamUrl, {
+  const response = await fetch(resolvedUpstreamUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      ...(isDashScopeUrl(upstreamUrl) && kind === "video" ? { "X-DashScope-Async": "enable" } : {}),
+      ...(isDashScopeUrl(resolvedUpstreamUrl) && kind === "video" ? { "X-DashScope-Async": "enable" } : {}),
     },
-    body: JSON.stringify(buildUpstreamPayload(kind, upstreamUrl, upstreamPayload)),
+    body: JSON.stringify(buildProxyPayload(kind, resolvedUpstreamUrl, upstreamPayload)),
   });
   const text = await response.text();
   const data = parseUpstreamBody(text, response.status);
-  return { status: response.status, payload: withUpstreamError(data, response.status, upstreamUrl) };
+  return { status: response.status, payload: withUpstreamError(data, response.status, resolvedUpstreamUrl) };
 }
 
 async function testProxy(fallbackPath, payload, kind = "generic") {
@@ -684,7 +717,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: referenceCheck.error });
         return;
       }
-      const result = await proxyJson("/images/generations", buildFirstFramePayload(body), "image");
+      const result = await proxyJson("/images/edits", buildFirstFramePayload(body), "image");
       sendJson(res, result.status, result.payload);
       return;
     }
