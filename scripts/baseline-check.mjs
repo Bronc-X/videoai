@@ -5,6 +5,7 @@ const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const workflowZhSource = readFileSync(new URL("../docs/product-video-workflow.zh-CN.md", import.meta.url), "utf8");
 const workflowEnSource = readFileSync(new URL("../docs/product-video-workflow.md", import.meta.url), "utf8");
+const normalizedAppSource = appSource.replace(/\r\n/g, "\n");
 
 const productPresetFiles = {
   shark: [
@@ -277,7 +278,7 @@ const checks = [
     pass:
       appSource.includes("function invalidateVideoOutputs()") &&
       appSource.includes("function updateVideoActionPrompt") &&
-      appSource.includes("invalidateVideoOutputs();\n    setVideoActionPrompt(value);") &&
+      normalizedAppSource.includes("invalidateVideoOutputs();\n    setVideoActionPrompt(value);") &&
       appSource.includes("setApprovedFirstFrameUrl(\"\")") &&
       appSource.includes("function invalidateGeneratedOutputs()"),
   },
