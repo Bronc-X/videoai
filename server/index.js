@@ -28,6 +28,11 @@ const IMAGE_TEXT_API_KEY = process.env.IMAGE_TEXT_API_KEY || TOAPIS_API_KEY;
 const VIDEO_BASE_URL = (process.env.VIDEO_BASE_URL || TOAPIS_BASE_URL).replace(/\/+$/, "");
 const VIDEO_API_KEY = process.env.VIDEO_API_KEY || TOAPIS_API_KEY;
 const VIDEO_MODEL = process.env.VIDEO_MODEL || "";
+const LOCAL_PROMPT_MODEL = "local-safety-draft";
+const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini";
+const DEFAULT_IMAGE_MODEL = "gpt-image-2";
+const STALE_PROMPT_MODELS = new Set(["gpt-4.1-mini", "gpt-5.5", LOCAL_PROMPT_MODEL]);
+const STALE_IMAGE_MODELS = new Set(["gpt-4.1-mini", "image-2"]);
 const OPENAI_VIDEO_GENERATIONS_PATH = "/video/generations";
 const DASHSCOPE_IMAGE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_VIDEO_SYNTHESIS_PATH = "/services/aigc/video-generation/video-synthesis";
@@ -104,9 +109,18 @@ function isCompleteEndpoint(value) {
   }
 }
 
+function normalizeUpstreamModel(model, kind) {
+  const text = typeof model === "string" ? model.trim() : "";
+  if (kind === "prompt" && (!text || STALE_PROMPT_MODELS.has(text))) return DEFAULT_PROMPT_MODEL;
+  if (kind === "image" && (!text || STALE_IMAGE_MODELS.has(text))) return DEFAULT_IMAGE_MODEL;
+  return text;
+}
+
 function pickProxyConfig(payload, fallbackPath, kind = "generic") {
   const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const { base_url, api_key, path, ...upstreamPayload } = body;
+  const normalizedModel = normalizeUpstreamModel(upstreamPayload.model, kind);
+  if (normalizedModel) upstreamPayload.model = normalizedModel;
   const useFixedImageTextApi = kind === "image" || kind === "prompt";
   const useVideoApi = kind === "video";
   const baseUrlInput = useFixedImageTextApi ? "" : cleanEndpointText(base_url);
@@ -1295,7 +1309,47 @@ function buildPromptSuggestionPayload(payload) {
   };
 }
 
+function buildLocalPromptSuggestion(payload) {
+  const kind = payload.kind === "video" ? "video" : "firstFrame";
+  const productType = typeof payload.product_type === "string" && payload.product_type.trim() ? payload.product_type.trim() : "通用充气服";
+  const stableProductName = getProductStableName(productType);
+  const scenePrompt = typeof payload.scene_prompt === "string" && payload.scene_prompt.trim()
+    ? payload.scene_prompt.trim()
+    : "生活化短视频场景";
+  const mustMention = buildPromptSuggestionMustMention(productType).replace(/^Must naturally include these .*?:\s*/i, "");
+  const hardwareLocks = buildPromptSuggestionHardwareMustMention(productType);
+
+  if (kind === "video") {
+    return [
+      `${stableProductName}从已确认首帧的${scenePrompt}里自然动起来，先保持原镜头、原地点和原有道具关系。`,
+      "它做出一个灵动搞怪的小动作：先轻轻晃动身体和手臂，再和身边道具发生安全的小互动，最后夸张停顿一下形成短视频包袱。",
+      `全程锁定产品一致性：${mustMention} ${hardwareLocks} 首帧的体积包络、颜色、布料褶皱、手脚鞋子、阀门、拉链、尾部和脸部结构都不得漂移。`,
+    ].join("");
+  }
+
+  return [
+    `${stableProductName}出现在${scenePrompt}，采用正面或轻微正面三分之二视角，全身入镜、双脚落地，场景有生活化短视频反差但不抢产品。`,
+    `产品必须严格按四视图保持一致：${mustMention} ${hardwareLocks}`,
+    "背景、灯光和道具只服务剧情，不遮挡、不替代、不改写任何产品组件，保持真实可穿戴充气服的薄尼龙/PVC褶皱和人体穿戴比例。",
+  ].join("");
+}
+
+function shouldUseLocalPromptSuggestion(payload) {
+  const model = typeof payload.model === "string" ? payload.model.trim() : "";
+  return !model || model === LOCAL_PROMPT_MODEL;
+}
+
+function isPromptModelUnavailable(data, status) {
+  const text = JSON.stringify(data || {});
+  return status === 404 || status === 503 || /model_not_found|No available channel|没有找到模型|模型不存在/i.test(text);
+}
+
 async function proxyPromptSuggestion(payload) {
+  if (shouldUseLocalPromptSuggestion(payload)) {
+    const prompt = buildLocalPromptSuggestion(payload);
+    return { status: 200, payload: { prompt, upstreamUrl: "local://prompt-suggestion", localFallback: true } };
+  }
+
   const { apiKey, upstreamUrl, upstreamPayload } = pickProxyConfig(
     { ...payload, path: payload.path || "/responses" },
     "/responses",
@@ -1318,7 +1372,21 @@ async function proxyPromptSuggestion(payload) {
     const text = await response.text();
     const data = parseUpstreamBody(text, response.status);
     lastPayload = data;
-    if (!response.ok) return { status: response.status, payload: withUpstreamError(data, response.status, upstreamUrl) };
+    if (!response.ok) {
+      if (isPromptModelUnavailable(data, response.status)) {
+        const prompt = buildLocalPromptSuggestion(upstreamPayload);
+        return {
+          status: 200,
+          payload: {
+            prompt,
+            upstreamUrl,
+            localFallback: true,
+            fallbackReason: "提示词模型渠道不可用，已改用本地安全草稿。",
+          },
+        };
+      }
+      return { status: response.status, payload: withUpstreamError(data, response.status, upstreamUrl) };
+    }
     const rawPrompt = cleanGeneratedPrompt(extractGeneratedText(data));
     const prompt = upstreamPayload.kind === "video" ? sanitizeVideoPromptText(rawPrompt) : rawPrompt;
     if (prompt) return { status: 200, payload: { prompt, upstreamUrl, retryCount: attempt - 1 } };

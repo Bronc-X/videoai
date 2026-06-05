@@ -129,7 +129,10 @@ const checks = [
       serverSource.includes(".env.local") &&
       serverSource.includes("IMAGE_TEXT_BASE_URL") &&
       serverSource.includes("IMAGE_TEXT_API_KEY") &&
-      serverSource.includes('kind === "image" || kind === "prompt"'),
+      serverSource.includes('kind === "image" || kind === "prompt"') &&
+      serverSource.includes("normalizeUpstreamModel") &&
+      serverSource.includes('const DEFAULT_IMAGE_MODEL = "gpt-image-2"') &&
+      serverSource.includes('const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini"'),
   },
   {
     name: "video API defaults to Wisech Seedance backend configuration",
@@ -149,8 +152,9 @@ const checks = [
       serverSource.includes("视频生成必须提交已确认首帧 image_url") &&
       serverSource.includes("hasVideoApiKey") &&
       appSource.includes('videoBaseUrl: "https://ai.wisech.com/v1"') &&
-      appSource.includes('videoModel: "doubao-seedance-2-0-fast-260128"') &&
+      appSource.includes('const DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-260128"') &&
       appSource.includes("doubao-seedance-1-5-pro-251215") &&
+      appSource.includes("doubao-seedance-2-0-260128") &&
       appSource.includes("VIDEO_MODEL_OPTIONS") &&
       appSource.includes("<select value={props.apiSettings.videoModel}") &&
       appSource.includes("后台已配置，留空即可"),
@@ -300,7 +304,8 @@ const checks = [
       appSource.includes("videoai.apiSettings") &&
       appSource.includes("window.localStorage.setItem") &&
       appSource.includes("loadApiSettings") &&
-      appSource.includes('promptModel: "gpt-4.1-mini"') &&
+      appSource.includes('const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini"') &&
+      appSource.includes('const DEFAULT_IMAGE_MODEL = "gpt-image-2"') &&
       appSource.includes("merged.imagePath") &&
       appSource.includes("merged.videoPath"),
   },

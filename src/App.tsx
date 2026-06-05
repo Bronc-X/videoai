@@ -104,6 +104,10 @@ type ProductPreset = {
 };
 
 const STORAGE_KEY = "videoai.apiSettings";
+const LOCAL_PROMPT_MODEL = "local-safety-draft";
+const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini";
+const DEFAULT_IMAGE_MODEL = "gpt-image-2";
+const DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-260128";
 
 const steps: Array<{ id: StepId; label: string; shortLabel: string; description: string; icon: LucideIcon }> = [
   { id: "upload", label: "上传产品四视图", shortLabel: "上传", description: "正面、左侧、右侧、背面四张核心图", icon: Upload },
@@ -715,17 +719,17 @@ function createFirstFrameReviewState(): FirstFrameReviewState {
 
 const defaultApiSettings: ApiSettings = {
   imagePath: "",
-  imageModel: "gpt-image-2",
+  imageModel: DEFAULT_IMAGE_MODEL,
   videoBaseUrl: "https://ai.wisech.com/v1",
   videoPath: "",
   videoApiKey: "",
-  videoModel: "doubao-seedance-2-0-fast-260128",
-  promptModel: "gpt-4.1-mini",
+  videoModel: DEFAULT_VIDEO_MODEL,
+  promptModel: DEFAULT_PROMPT_MODEL,
 };
 
 const VIDEO_MODEL_OPTIONS = [
-  "doubao-seedance-2-0-fast-260128",
   "doubao-seedance-1-5-pro-251215",
+  "doubao-seedance-2-0-260128",
 ] as const;
 
 const productAssetPlan: ProductAsset[] = [
@@ -810,11 +814,22 @@ function loadApiSettings(): ApiSettings {
       merged.videoBaseUrl = defaultApiSettings.videoBaseUrl;
     }
     const videoModelText = typeof merged.videoModel === "string" ? merged.videoModel : "";
-    if (!videoModelText || videoModelText.startsWith("happyhorse-1.0")) {
+    if (!videoModelText || videoModelText.startsWith("happyhorse-1.0") || videoModelText === "doubao-seedance-2-0-fast-260128") {
       merged.videoModel = defaultApiSettings.videoModel;
     }
     if (merged.videoBaseUrl === defaultApiSettings.videoBaseUrl && merged.videoModel === defaultApiSettings.videoModel) {
       merged.videoApiKey = "";
+    }
+    if (
+      !merged.promptModel ||
+      merged.promptModel === "gpt-4.1-mini" ||
+      merged.promptModel === "gpt-5.5" ||
+      merged.promptModel === LOCAL_PROMPT_MODEL
+    ) {
+      merged.promptModel = defaultApiSettings.promptModel;
+    }
+    if (!merged.imageModel || merged.imageModel === "gpt-4.1-mini" || merged.imageModel === "image-2") {
+      merged.imageModel = defaultApiSettings.imageModel;
     }
     return merged;
   } catch {
@@ -1818,7 +1833,7 @@ function FirstFrameStep(props: {
             <input
               value={props.apiSettings.promptModel}
               onChange={(event) => props.updateApiSettings({ promptModel: event.target.value })}
-              placeholder="gpt-4.1-mini"
+              placeholder={DEFAULT_PROMPT_MODEL}
             />
           </label>
           <label>
@@ -1826,7 +1841,7 @@ function FirstFrameStep(props: {
             <input
               value={props.apiSettings.imageModel}
               onChange={(event) => props.updateApiSettings({ imageModel: event.target.value })}
-              placeholder="gpt-image-2"
+              placeholder={DEFAULT_IMAGE_MODEL}
             />
           </label>
           <button className="secondary-action full-width" type="button" onClick={props.onTest} disabled={props.isTesting}>
@@ -1956,7 +1971,7 @@ function VideoStep(props: {
             <input
               value={props.apiSettings.promptModel}
               onChange={(event) => props.updateApiSettings({ promptModel: event.target.value })}
-              placeholder="gpt-4.1-mini"
+              placeholder={DEFAULT_PROMPT_MODEL}
             />
           </label>
           <label>
