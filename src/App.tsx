@@ -108,6 +108,7 @@ const LOCAL_PROMPT_MODEL = "local-safety-draft";
 const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini";
 const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 const DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-260128";
+const PRINT_LOADING_ASSET_BASE = "/print-loading-animation";
 
 const steps: Array<{ id: StepId; label: string; shortLabel: string; description: string; icon: LucideIcon }> = [
   { id: "upload", label: "上传产品四视图", shortLabel: "上传", description: "正面、左侧、右侧、背面四张核心图", icon: Upload },
@@ -1935,11 +1936,24 @@ function VideoStep(props: {
           <div className={cn("video-preview", `media-ratio-${props.aspectRatio.replace(":", "-")}`)}>
             {props.videoUrl ? (
               <video controls playsInline src={props.videoUrl} />
+            ) : isWorking ? (
+              <div className="video-status-card print-loading-card">
+                <div className="print-loading-media" aria-hidden="true">
+                  <video poster={`${PRINT_LOADING_ASSET_BASE}/print-loading-poster.jpg`} autoPlay muted loop playsInline>
+                    <source src={`${PRINT_LOADING_ASSET_BASE}/print-loading-loop.webm`} type="video/webm" />
+                    <source src={`${PRINT_LOADING_ASSET_BASE}/print-loading-loop.mp4`} type="video/mp4" />
+                  </video>
+                </div>
+                <div className="print-loading-hud">
+                  <LoaderCircle className="spin" size={28} />
+                  <strong>{props.statusText || "视频生成中"}</strong>
+                  {props.taskId && <span>任务号：{props.taskId}</span>}
+                </div>
+              </div>
             ) : (
               <div className="video-status-card">
-                {isWorking ? <LoaderCircle className="spin" size={38} /> : <Play size={42} />}
+                <Play size={42} />
                 <strong>{props.statusText || "视频预览"}</strong>
-                {props.taskId && <span>任务号：{props.taskId}</span>}
               </div>
             )}
           </div>
