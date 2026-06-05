@@ -1558,35 +1558,6 @@ export function App() {
               <span className="block truncate text-[12px] font-bold text-[#607276]">四视图锁定 · 首帧审核 · 视频生成</span>
             </div>
           </div>
-          <div className="hidden items-center gap-2 rounded-lg border border-[#d7e5e6] bg-white/60 p-1 text-[13px] font-bold text-[#607276] lg:flex">
-            {visibleSteps.map((step) => (
-              <button
-                className={cn(
-                  "rounded-md px-4 py-2 transition",
-                  activeStep === step.id && "bg-[#07363d] text-white shadow-[0_12px_24px_rgba(7,54,61,0.18)]",
-                )}
-                type="button"
-                key={step.id}
-                onClick={() => selectStep(step.id)}
-              >
-                {step.shortLabel}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button className="hidden rounded-lg border border-[#d7e5e6] bg-white/70 px-4 py-2 text-[14px] font-bold text-[#456064] transition active:scale-[0.98] md:inline-flex">
-              保存
-            </button>
-            <button
-              className="inline-flex items-center gap-2 rounded-lg border border-[#b8dce1] bg-white px-4 py-2 text-[14px] font-black text-[#007e91] shadow-[0_12px_24px_rgba(0,126,145,0.08)] transition active:scale-[0.98]"
-              type="button"
-              onClick={() => setHistoryOpen(true)}
-            >
-              <Database size={16} />
-              轻后台
-              {historyItems.length > 0 && <span className="rounded-md bg-[#e6f5f6] px-2 py-0.5 text-[11px]">{historyItems.length}</span>}
-            </button>
-          </div>
         </div>
       </header>
 
@@ -1635,6 +1606,15 @@ export function App() {
           </div>
           <button className="mt-4 w-full rounded-lg border border-[#d7e5e6] bg-white/70 px-4 py-3 text-[14px] font-black text-[#456064] transition active:scale-[0.98]">
             新建流程
+          </button>
+          <button
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#b8dce1] bg-white px-4 py-3 text-[14px] font-black text-[#007e91] shadow-[0_12px_24px_rgba(0,126,145,0.08)] transition active:scale-[0.98]"
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <Database size={16} />
+            轻后台
+            {historyItems.length > 0 && <span className="rounded-md bg-[#e6f5f6] px-2 py-0.5 text-[11px]">{historyItems.length}</span>}
           </button>
         </motion.aside>
 
@@ -1717,14 +1697,6 @@ export function App() {
           </AnimatePresence>
         </main>
       </div>
-      <WorkflowTimeline
-        activeStep={activeStep}
-        completed={completedSteps}
-        canEnterFirstFrame={uploadReady}
-        canEnterVideo={videoReady}
-        canEnterQa={Boolean(videoUrl)}
-        onSelect={selectStep}
-      />
       {historyOpen && (
         <HistoryDrawer
           items={historyItems}
@@ -2255,52 +2227,6 @@ function StageHeader(props: { eyebrow: string; title: string }) {
       <span>{props.eyebrow}</span>
       <h1>{props.title}</h1>
     </div>
-  );
-}
-
-function WorkflowTimeline(props: {
-  activeStep: StepId;
-  completed: Record<StepId, boolean>;
-  canEnterFirstFrame: boolean;
-  canEnterVideo: boolean;
-  canEnterQa: boolean;
-  onSelect: (step: StepId) => void;
-}) {
-  const activeIndex = visibleSteps.findIndex((step) => step.id === props.activeStep);
-  const canEnter: Record<StepId, boolean> = {
-    upload: true,
-    firstFrame: props.canEnterFirstFrame,
-    video: props.canEnterVideo,
-    qa: props.canEnterQa,
-  };
-  return (
-    <nav className="workflow-timeline" aria-label="生成流程">
-      <div className="timeline-line" />
-      {visibleSteps.map((step, index) => {
-        const Icon = step.icon;
-        const isActive = props.activeStep === step.id;
-        const isDone = props.completed[step.id];
-        const isPast = index < activeIndex;
-        const isLocked = !canEnter[step.id];
-        return (
-          <button
-            type="button"
-            key={step.id}
-            aria-disabled={isLocked}
-            className={cn("timeline-step", isActive && "active", (isDone || isPast) && "done", isLocked && "locked")}
-            onClick={() => props.onSelect(step.id)}
-          >
-            <span className="timeline-dot">
-              {isDone || isPast ? <Check size={16} /> : <Icon size={16} />}
-            </span>
-            <span className="timeline-copy">
-              <strong>{step.shortLabel}</strong>
-              <em>{step.description}</em>
-            </span>
-          </button>
-        );
-      })}
-    </nav>
   );
 }
 
