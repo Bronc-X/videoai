@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 const serverSource = readFileSync(new URL("../server/index.js", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const packageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const viteConfigSource = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
 const workflowZhSource = readFileSync(new URL("../docs/product-video-workflow.zh-CN.md", import.meta.url), "utf8");
 const workflowEnSource = readFileSync(new URL("../docs/product-video-workflow.md", import.meta.url), "utf8");
 const normalizedAppSource = appSource.replace(/\r\n/g, "\n");
@@ -220,21 +222,24 @@ const checks = [
       serverSource.includes("COW HARD FAIL DETAILS") &&
       serverSource.includes("SUMO HARD FAIL DETAILS") &&
       serverSource.includes("buildVideoFirstFramePixelAnchorLocks(productType)") &&
-      appSource.includes("首帧就是像素级身份锚点") &&
-      appSource.includes("不允许高清重绘") &&
-      appSource.includes("允许为了动作和喜剧效果出现手持道具") &&
-      appSource.includes("道具只能作为外部剧情道具") &&
-      appSource.includes("可见真人手/鞋") &&
-      appSource.includes("大块黑色弧形嘴带") &&
-      appSource.includes("双手重排抱袋") &&
-      appSource.includes("如果首帧是一只手拿零食袋、另一只手伸向货架"),
+      appSource.includes("像“我不是鲨鱼我只是路过”") &&
+      appSource.includes("像被一个价签或袋子上的字问住了") &&
+      appSource.includes("像忘词一样慢慢收回手") &&
+      appSource.includes("像输给了空气") &&
+      appSource.includes("全程锁定首帧像素身份") &&
+      appSource.includes("不能重排双手或替换道具接触关系") &&
+      appSource.includes("尾鳍、鞋子和薄尼龙/PVC褶皱都不漂移"),
   },
   {
     name: "video prompt dice generates lively humorous motion while preserving product locks",
     pass:
-      serverSource.includes("灵动、幽默、略搞怪") &&
-      serverSource.includes("明显戏剧节奏") &&
+      serverSource.includes("有一点搞笑甚至搞怪") &&
+      serverSource.includes("喜剧动作脚本") &&
       serverSource.includes("2-3 个节拍的小短剧") &&
+      serverSource.includes("必须有一个明确笑点") &&
+      serverSource.includes("不要输出产品说明书") &&
+      serverSource.includes("前 2 句不得出现阀门、拉链、PVC、缝线、泵口、体积包络") &&
+      serverSource.includes("最后一句自然带过这些产品锁即可") &&
       serverSource.includes("允许一个较明显但产品安全的大动作") &&
       serverSource.includes("不能只是站着不动") &&
       serverSource.includes("戏剧性来自场景反差") &&
@@ -254,6 +259,21 @@ const checks = [
       serverSource.includes("不能变成产品新增组件") &&
       serverSource.includes("InputTextSensitiveContentDetected") === false &&
       serverSource.includes("避免偷、被发现、推、撞、吓、攻击、摔倒、危险、求助"),
+  },
+  {
+    name: "video waiting state uses approved first frame instead of unrelated loading media",
+    pass:
+      appSource.includes("firstFrameUrl={approvedFirstFrameUrl}") &&
+      appSource.includes("video-generating-card") &&
+      appSource.includes("video-generating-frame") &&
+      appSource.includes("video-generating-hud") &&
+      appSource.includes("props.firstFrameUrl") &&
+      styleSource.includes("@keyframes videoScan") &&
+      styleSource.includes("@keyframes videoProgress") &&
+      styleSource.includes("@keyframes videoFramePulse") &&
+      !appSource.includes("PRINT_LOADING_ASSET_BASE") &&
+      !appSource.includes("print-loading-loop") &&
+      !styleSource.includes(".print-loading-card"),
   },
   {
     name: "OpenAI-compatible image edits are sent as multipart references",
@@ -276,6 +296,22 @@ const checks = [
       serverSource.includes("need exactly four readable core product view images") &&
       serverSource.includes("CORE_VIEW_INPUT_ORDER") &&
       serverSource.includes("FOUR-VIEW REFERENCES ARE TOPOLOGY MAPS"),
+  },
+  {
+    name: "first-frame review opens video editor or regeneration without auto-submitting video",
+    pass:
+      appSource.includes("createPassedFirstFrameReviewState") &&
+      appSource.includes("approveFirstFrameAndOpenVideoStep") &&
+      appSource.includes("setFirstFrameReviewState(createPassedFirstFrameReviewState())") &&
+      appSource.includes("请在视频页确认或修改提示词后手动生成") &&
+      !appSource.includes('await callBackend("video")') &&
+      appSource.includes("regenerateFirstFrameFromReview") &&
+      normalizedAppSource.includes('if (kind === "firstFrame") {\n      setApprovedFirstFrameUrl("");\n      setFirstFrameApproved(false);\n      setFirstFrameReviewState(createFirstFrameReviewState());\n    }') &&
+      appSource.includes("allFirstFrameReviewChecksResolved") &&
+      appSource.includes("进入重新生成") &&
+      appSource.includes("一键全部通过") &&
+      appSource.includes("usesFixedVideoBackend") &&
+      appSource.includes("const videoApiKeyForRequest = usesFixedVideoBackend ? \"\" : apiSettings.videoApiKey"),
   },
   {
     name: "video prompt edits do not invalidate approved first frame",
@@ -308,6 +344,48 @@ const checks = [
       appSource.includes('const DEFAULT_IMAGE_MODEL = "gpt-image-2"') &&
       appSource.includes("merged.imagePath") &&
       appSource.includes("merged.videoPath"),
+  },
+  {
+    name: "generation history is persisted locally",
+    pass:
+      appSource.includes('const HISTORY_STORAGE_KEY = "videoai.historyItems"') &&
+      appSource.includes("const MAX_HISTORY_ITEMS = 60") &&
+      appSource.includes("function loadHistoryItems") &&
+      appSource.includes("function isHistoryItem") &&
+      appSource.includes("function upsertHistoryItem") &&
+      appSource.includes("useState<HistoryItem[]>(() => loadHistoryItems())") &&
+      appSource.includes("window.localStorage.setItem(HISTORY_STORAGE_KEY") &&
+      appSource.includes("historyItems.slice(0, MAX_HISTORY_ITEMS)") &&
+      appSource.includes("createHistoryItem(newTaskId || `LOCAL-${Date.now()}`, kind, nextHistoryStatus)") &&
+      !appSource.includes('id: "H-2401"') &&
+      !appSource.includes('title: "海边便利店首帧"'),
+  },
+  {
+    name: "backend API routes are table-driven",
+    pass:
+      serverSource.includes("const apiRoutes = [") &&
+      serverSource.includes("function findApiRoute") &&
+      serverSource.includes("async function handleApiRequest") &&
+      serverSource.includes("createApiResponse") &&
+      serverSource.includes('path: "/api/first-frame"') &&
+      serverSource.includes('path: "/api/video"') &&
+      serverSource.includes('path: "/api/prompt-suggestion"') &&
+      serverSource.includes('path: "/api/video/:taskId"') &&
+      !serverSource.includes('if (req.method === "POST" && url.pathname === "/api/first-frame")'),
+  },
+  {
+    name: "frontend redesign uses Tailwind shell and Motion transitions",
+    pass:
+      packageSource.includes('"tailwindcss"') &&
+      packageSource.includes('"@tailwindcss/vite"') &&
+      packageSource.includes('"motion"') &&
+      viteConfigSource.includes('import tailwindcss from "@tailwindcss/vite"') &&
+      viteConfigSource.includes("plugins: [react(), tailwindcss()]") &&
+      styleSource.includes('@import "tailwindcss"') &&
+      appSource.includes('import { AnimatePresence, motion } from "motion/react"') &&
+      appSource.includes('<AnimatePresence mode="wait">') &&
+      appSource.includes("min-h-[100dvh]") &&
+      appSource.includes("max-w-[1500px]"),
   },
 ];
 

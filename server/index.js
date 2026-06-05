@@ -60,6 +60,14 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function createApiResponse(status, payload) {
+  return { status, payload };
+}
+
+async function readRequestBody(req) {
+  return req.method === "POST" ? readJson(req) : {};
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -221,12 +229,12 @@ function getProductFamily(productType) {
 
 function getProductStableName(productType) {
   const family = getProductFamily(productType);
-  if (family === "shark") return "shark inflatable costume";
-  if (family === "cow") return "cow inflatable costume";
-  if (family === "mouse") return "gray mouse inflatable costume";
-  if (family === "frog") return "frog inflatable costume";
-  if (family === "sumo") return "sumo inflatable costume";
-  const text = typeof productType === "string" && productType.trim() ? productType.trim() : "wearable inflatable costume";
+  if (family === "shark") return "鲨鱼充气服";
+  if (family === "cow") return "奶牛充气服";
+  if (family === "mouse") return "灰色老鼠充气服";
+  if (family === "frog") return "青蛙充气服";
+  if (family === "sumo") return "相扑充气服";
+  const text = typeof productType === "string" && productType.trim() ? productType.trim() : "可穿戴充气服";
   return text;
 }
 
@@ -1240,12 +1248,12 @@ function buildPromptSuggestionPayload(payload) {
     .concat(buildInflatableHardwareMaterialLocks(productType))
     .concat(buildFirstFrameProductVisualLocks(productType))
     .concat(buildVideoProductVisualLocks(productType))
-    .slice(0, 26)
+    .slice(0, kind === "video" ? 10 : 26)
     .join("\n");
   const task =
     kind === "firstFrame"
       ? "生成一段可直接填入“生成首帧提示词”的中文提示词。它要描述一个强故事性、短视频感、略带恶搞但不复杂的首帧场景，同时明确产品一致性优先。"
-      : "生成一段可直接填入“生成视频提示词”的中文提示词。它必须像短视频导演写给视频模型的动作脚本：严格沿用当前首帧场景和当前产品名，先写清楚这个场景里的可见道具，再写灵动、幽默、略搞怪的 2-3 个动作节拍；要有明显戏剧节奏和较大的表演变化，但产品外观不能漂移。";
+      : "生成一段可直接填入“生成视频提示词”的中文提示词。它必须像 TikTok 电商短视频导演写的喜剧动作脚本：严格沿用当前首帧场景和当前产品名，前三分之二只写清楚可见道具、误会点、停顿、反应和 2-3 个搞怪动作节拍；最后一句才用自然短句锁定产品一致性。不要输出产品说明书，不要输出阀门/拉链/材质清单。";
   const modeRules =
     kind === "firstFrame"
       ? [
@@ -1259,9 +1267,11 @@ function buildPromptSuggestionPayload(payload) {
           scenePrompt
             ? "严禁更换首帧场景类型和场景道具：必须沿用下面 SCENE ANCHOR 中的地点和至少两个原有道具词；如果 SCENE ANCHOR 写了海鲜区/冰鲜鱼柜/价签/购物车，就不能改成零食货架/办公室/电梯等别的地点。"
             : "如果当前首帧场景为空，才可以自行选择一个具体可拍的生活化场景。",
-          "视频必须保持原镜头族，但动作要比静态展示更有戏：写成 2-3 个节拍的小短剧，例如先认真装无辜、被场景里的某个无害细节打断、夸张僵住/缩手/踉跄、最后做一个滑稽补救。",
+          "视频必须保持原镜头族，但动作要比静态展示更有戏：写成 2-3 个节拍的小短剧，例如先认真营业或装无辜、被场景里的某个无害细节打断、夸张僵住/缩手/轻微踉跄、最后做一个滑稽补救。",
+          "必须有一个明确笑点：误会、反差、过度认真、慢半拍反应、突然定住、假装没事、和小道具较真，至少选两种写进输出。",
           "允许一个较明显但产品安全的大动作：夸张伸手/缩手、左右摇晃、轻微踉跄半步、身体弹性晃动、蹲一下又弹回、和首帧已有道具发生轻微互动；动作要看得见，不能只是站着不动或几乎看不见的呼吸抖动。",
           "风格要灵动、幽默、有一点搞笑甚至搞怪，像 TikTok 电商短视频里的荒诞小桥段；戏剧性来自场景反差、表演节奏、停顿和道具互动，不来自重绘产品。",
+          "输出必须先写喜剧情节，再写产品锁。前 2 句不得出现阀门、拉链、PVC、缝线、泵口、体积包络这类技术锁词；这些只能出现在最后一句。",
           "用安全、无冲突的喜剧表达：可以写误会、愣住、轻碰、差点贴到、夸张缩手、无辜表情、滑稽补救；避免偷、被发现、推、撞、吓、攻击、摔倒、危险、求助等敏感或冲突词。",
           "必须把产品一致性约束压缩成最后一句自然说明；不要让整段变成阀门、拉链、材质的清单。",
           "已确认首帧是像素级身份锚点，不是风格参考；不要写高清重绘、质量提升、重新摆拍、双手重排、道具替换、产品美化或更干净的卡通化。",
@@ -1295,11 +1305,13 @@ function buildPromptSuggestionPayload(payload) {
           lockLines ? `前端锁定节点：\n${lockLines}` : "前端锁定节点：使用产品四视图中的所有可见组件。",
           "写作规则：",
           modeRules,
-          buildPromptSuggestionMustMention(productType),
-          buildPromptSuggestionHardwareMustMention(productType),
+          kind === "video"
+            ? `最后一句自然带过这些产品锁即可，不要展开成清单：${buildPromptSuggestionMustMention(productType)} ${buildPromptSuggestionHardwareMustMention(productType)}`
+            : buildPromptSuggestionMustMention(productType),
+          kind === "video" ? "" : buildPromptSuggestionHardwareMustMention(productType),
           currentPrompt ? `当前提示词，可参考但不要照抄：\n${currentPrompt}` : "当前提示词为空，请直接生成。",
           kind === "video"
-            ? `输出长度控制在 180-320 个中文字符。必须像一个有包袱的小视频动作脚本：第一句写“${stableProductName}”在 SCENE ANCHOR 原场景和原道具里的处境，第二句写 2-3 个搞怪动作节拍，最后一句只用简短自然的话锁定产品一致性。不要换场景，不要换产品名，不要把原场景替换成相似场景。`
+            ? `输出长度控制在 160-260 个中文字符。必须像一个有包袱的小视频动作脚本：第一句写“${stableProductName}”在 SCENE ANCHOR 原场景和原道具里的尴尬处境，第二句写 2-3 个搞怪动作节拍和一个停顿笑点，最后一句只用简短自然的话锁定产品一致性。不要换场景，不要换产品名，不要把原场景替换成相似场景。`
             : "输出长度控制在 220-420 个中文字符，必须自然、可执行、故事性强，且明确货对版约束。",
         ].join("\n\n"),
       },
@@ -1469,17 +1481,12 @@ async function proxyVideoStatus(payload) {
   return { status: response.status, payload: withUpstreamError(data, response.status, upstreamUrl) };
 }
 
-const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") {
-    sendJson(res, 204, {});
-    return;
-  }
-
-  try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-
-    if (url.pathname === "/api/health") {
-      sendJson(res, 200, {
+const apiRoutes = [
+  {
+    method: "GET",
+    path: "/api/health",
+    handler: async () =>
+      createApiResponse(200, {
         ok: true,
         toapisBaseUrl: TOAPIS_BASE_URL,
         hasApiKey: Boolean(TOAPIS_API_KEY),
@@ -1488,74 +1495,88 @@ const server = http.createServer(async (req, res) => {
         videoBaseUrl: VIDEO_BASE_URL,
         videoModel: VIDEO_MODEL,
         hasVideoApiKey: Boolean(VIDEO_API_KEY),
-      });
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/first-frame") {
-      const body = await readJson(req);
+      }),
+  },
+  {
+    method: "POST",
+    path: "/api/first-frame",
+    handler: async ({ body }) => {
       const referenceCheck = validateFourViewImages(body);
-      if (!referenceCheck.ok) {
-        sendJson(res, 400, { error: referenceCheck.error });
-        return;
-      }
-      const result = await proxyJson("/images/edits", buildFirstFramePayload(body), "image");
-      sendJson(res, result.status, result.payload);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/video") {
-      const body = await readJson(req);
+      if (!referenceCheck.ok) return createApiResponse(400, { error: referenceCheck.error });
+      return proxyJson("/images/edits", buildFirstFramePayload(body), "image");
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/video",
+    handler: async ({ body }) => {
       const firstFrameUrl = getVideoFirstFrameUrl(body);
       if (!firstFrameUrl || !isReadableVideoFirstFrameUrl(firstFrameUrl)) {
-        sendJson(res, 400, { error: "视频生成必须提交已确认首帧 image_url，且必须是 http(s) 或 data:image 地址；不能退化成纯文生视频。" });
-        return;
+        return createApiResponse(400, { error: "视频生成必须提交已确认首帧 image_url，且必须是 http(s) 或 data:image 地址；不能退化成纯文生视频。" });
       }
-      const result = await proxyJson(OPENAI_VIDEO_GENERATIONS_PATH, buildVideoPayload(body), "video");
-      sendJson(res, result.status, result.payload);
-      return;
-    }
+      return proxyJson(OPENAI_VIDEO_GENERATIONS_PATH, buildVideoPayload(body), "video");
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/prompt-suggestion",
+    handler: async ({ body }) => proxyPromptSuggestion(body),
+  },
+  {
+    method: "POST",
+    path: "/api/test-image",
+    handler: async ({ body }) => testProxy("", body, "image"),
+  },
+  {
+    method: "POST",
+    path: "/api/test-video",
+    handler: async ({ body }) => testProxy("", body, "video"),
+  },
+  {
+    method: "POST",
+    path: "/api/video-status",
+    handler: async ({ body }) => proxyVideoStatus(body),
+  },
+];
 
-    if (req.method === "POST" && url.pathname === "/api/prompt-suggestion") {
-      const body = await readJson(req);
-      const result = await proxyPromptSuggestion(body);
-      sendJson(res, result.status, result.payload);
-      return;
-    }
+function findApiRoute(method, pathname) {
+  const exactRoute = apiRoutes.find((route) => route.method === method && route.path === pathname);
+  if (exactRoute) return exactRoute;
+  if (method === "GET" && pathname.startsWith("/api/video/")) {
+    return {
+      method,
+      path: "/api/video/:taskId",
+      handler: async () => {
+        const taskId = decodeURIComponent(pathname.replace("/api/video/", ""));
+        if (!taskId) return createApiResponse(400, { error: "Missing task id" });
+        return proxyVideoStatus({ task_id: taskId });
+      },
+    };
+  }
+  return null;
+}
 
-    if (req.method === "POST" && url.pathname === "/api/test-image") {
-      const body = await readJson(req);
-      const result = await testProxy("", body, "image");
-      sendJson(res, result.status, result.payload);
-      return;
-    }
+async function handleApiRequest(req, res) {
+  if (req.method === "OPTIONS") {
+    sendJson(res, 204, {});
+    return;
+  }
 
-    if (req.method === "POST" && url.pathname === "/api/test-video") {
-      const body = await readJson(req);
-      const result = await testProxy("", body, "video");
-      sendJson(res, result.status, result.payload);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/video-status") {
-      const body = await readJson(req);
-      const result = await proxyVideoStatus(body);
-      sendJson(res, result.status, result.payload);
-      return;
-    }
-
-    if (req.method === "GET" && url.pathname.startsWith("/api/video/")) {
-      const taskId = decodeURIComponent(url.pathname.replace("/api/video/", ""));
-      if (!taskId) {
-        sendJson(res, 400, { error: "Missing task id" });
-        return;
-      }
-      const result = await proxyVideoStatus({ task_id: taskId });
-      sendJson(res, result.status, result.payload);
-      return;
-    }
-
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const route = findApiRoute(req.method || "GET", url.pathname);
+  if (!route) {
     sendJson(res, 404, { error: "Not found" });
+    return;
+  }
+
+  const body = await readRequestBody(req);
+  const result = await route.handler({ req, url, body });
+  sendJson(res, result.status, result.payload);
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    await handleApiRequest(req, res);
   } catch (error) {
     sendJson(res, 500, {
       error: error instanceof Error ? error.message : "Unknown server error",
