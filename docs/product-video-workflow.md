@@ -32,7 +32,7 @@ The upload stage requires four equal core product images:
 - Right-side view
 - Back view
 
-There is no primary image plus optional reference among the core views. All four core images are product-identity inputs. Detail images are optional supplements for fragile local evidence, not a required topology view.
+There is no primary image plus optional reference among the core views. All four core images are product-identity inputs. Users no longer upload detail images. Long-term product presets may include backend-only auxiliary support views for fragile same-product evidence, but those are not a user-facing upload step.
 
 Rules:
 
@@ -40,7 +40,7 @@ Rules:
 - Uploading only the front image must not advance the workflow.
 - The frontend sends `image_urls` with exactly four readable images.
 - `image_urls` has a fixed semantic order: `image_urls[0]` is front, `image_urls[1]` is left side, `image_urls[2]` is right side, and `image_urls[3]` is back.
-- Optional detail images are sent as `detail_image_urls`; they may refine valve mesh, face-window reflections, zipper teeth, stitching, wrinkles, or material, but they do not block first-frame generation.
+- Preset auxiliary support views are sent as `support_image_urls`; they may refine valve position, tail/scarf/belt placement, zipper teeth, stitching, wrinkles, or material, and they are attached automatically by the system.
 - The backend rejects `blob:` preview URLs and accepts only `data:image/` or `http(s)` image URLs.
 - `foreground_source_url` is not part of this workflow.
 
@@ -52,7 +52,7 @@ The contract includes:
 
 - Category lock: the product remains a wearable inflatable costume.
 - Four-view topology: front, left side, right side, and back views define physical placement.
-- Fragile details: valve, face window, zipper, tail fin, gill stripes, shoes, wrinkles, seams. Optional details strengthen these local locks only.
+- Fragile details: valve, face window, zipper, tail fin, gill stripes, shoes, wrinkles, seams. Preset auxiliary support views strengthen these local locks only.
 - Forbidden changes: no redraw, averaging, collage, relocation, duplication, removal, resizing, or restyling.
 - Volume envelope: preserve size, proportion, thickness, and medium-inflated silhouette.
 
@@ -69,7 +69,7 @@ Create one product-in-scene image while preserving the product structure defined
 Rules:
 
 - Use the four uploaded core images as equal topology constraints.
-- Use optional detail images only as auxiliary local evidence.
+- Use preset `support_image_urls` only as auxiliary same-product evidence.
 - Product consistency outranks the user scene prompt.
 - Do not average four images into a new product.
 - Do not combine all visible details into an impossible surface.
@@ -165,7 +165,7 @@ Back:
 - Center rear tail fin
 - Back volume must not become an unstructured cylinder
 
-Optional Detail Supplements:
+Preset Auxiliary / Local Evidence:
 
 - Fabric wrinkles
 - Seam tension
@@ -179,7 +179,9 @@ Frontend:
 
 - Four parallel upload cards.
 - Completion disabled until front, left-side, right-side, and back images exist.
-- Detail upload is optional and does not block completion.
+- No user-facing detail-image upload is exposed. Long-term product auxiliary views are attached automatically from the local preset.
+- Image generation and text prompt generation APIs are fixed backend configuration. The UI must not ask users to enter the image/text API key or base URL.
+- Video generation API controls may remain in the UI because the video service can be switched independently.
 - Changing product images, product type, scene, or aspect ratio invalidates old first frame, video, and QA state.
 - Product-lock step is hidden.
 - Technical URL fields are hidden from users.
@@ -187,9 +189,10 @@ Frontend:
 
 Backend:
 
+- Image generation and prompt generation use backend `IMAGE_TEXT_BASE_URL` / `IMAGE_TEXT_API_KEY`; this credential must not be passed through browser forms.
 - `/api/first-frame` validates exactly four core `image_urls`.
 - `/api/first-frame` labels the four core images with their fixed view roles before sending them to multimodal image generation.
-- `/api/first-frame` may accept optional `detail_image_urls` as local-detail supplements.
+- `/api/first-frame` may accept preset `support_image_urls` as same-product local-evidence supplements.
 - `foreground_source_url` is not accepted.
 - Prompt states that four views are topology maps, not collage requirements.
 - Prompt states not to average four views into a new product.
@@ -199,5 +202,5 @@ Backend:
 Validation:
 
 - Run `npm run test:baseline`.
-- Browser-check four visible steps, four core parallel upload cards, optional detail supplement area, disabled completion, hidden product-lock step, hidden URL fields, and no horizontal overflow.
+- Browser-check four visible steps, five local product presets, four core parallel upload cards, no detail-image upload area, disabled completion, hidden product-lock step, hidden URL fields, and no horizontal overflow.
 - API-check fewer than four images are rejected, and four readable images pass four-view validation before API-key validation.

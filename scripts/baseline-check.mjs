@@ -5,466 +5,303 @@ const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8
 const styleSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const workflowZhSource = readFileSync(new URL("../docs/product-video-workflow.zh-CN.md", import.meta.url), "utf8");
 const workflowEnSource = readFileSync(new URL("../docs/product-video-workflow.md", import.meta.url), "utf8");
-const sharkPresetFiles = [
-  "../public/product-presets/shark-inflatable/front.png",
-  "../public/product-presets/shark-inflatable/left.png",
-  "../public/product-presets/shark-inflatable/right.png",
-  "../public/product-presets/shark-inflatable/back.jpg",
-].map((path) => new URL(path, import.meta.url));
+
+const productPresetFiles = {
+  shark: [
+    "../public/product-presets/shark-inflatable/front.png",
+    "../public/product-presets/shark-inflatable/left.png",
+    "../public/product-presets/shark-inflatable/right.png",
+    "../public/product-presets/shark-inflatable/back.jpg",
+    "../public/product-presets/shark-inflatable/reference-01.mp4",
+    "../public/product-presets/shark-inflatable/reference-02.mp4",
+  ],
+  bull: [
+    "../public/product-presets/bull-inflatable/front.jpg",
+    "../public/product-presets/bull-inflatable/left.jpg",
+    "../public/product-presets/bull-inflatable/right.jpg",
+    "../public/product-presets/bull-inflatable/back.jpg",
+    "../public/product-presets/bull-inflatable/reference-01.mp4",
+  ],
+  grayMouse: [
+    "../public/product-presets/gray-mouse-inflatable/front.jpg",
+    "../public/product-presets/gray-mouse-inflatable/left.jpg",
+    "../public/product-presets/gray-mouse-inflatable/right.jpg",
+    "../public/product-presets/gray-mouse-inflatable/back.jpg",
+  ],
+  frog: [
+    "../public/product-presets/frog-inflatable/front.jpg",
+    "../public/product-presets/frog-inflatable/left.jpg",
+    "../public/product-presets/frog-inflatable/right.jpg",
+    "../public/product-presets/frog-inflatable/back.jpg",
+    "../public/product-presets/frog-inflatable/support-right-alt.jpg",
+  ],
+  sumo: [
+    "../public/product-presets/sumo-inflatable/front.jpg",
+    "../public/product-presets/sumo-inflatable/left.jpg",
+    "../public/product-presets/sumo-inflatable/right.jpg",
+    "../public/product-presets/sumo-inflatable/back.jpg",
+    "../public/product-presets/sumo-inflatable/support-rear-valve.jpg",
+  ],
+};
+
+const allPresetFiles = Object.values(productPresetFiles)
+  .flat()
+  .map((path) => new URL(path, import.meta.url));
 
 const checks = [
   {
-    name: "backend accepts API settings and path from the UI",
-    pass:
-      serverSource.includes("const { base_url, api_key, path, ...upstreamPayload } = body") &&
-      serverSource.includes("pathText") &&
-      serverSource.includes("upstreamUrl"),
+    name: "all five long-term product presets exist on disk",
+    pass: allPresetFiles.every((file) => existsSync(file)),
   },
   {
-    name: "backend exposes image and video API tests",
+    name: "frontend product library contains the five real products",
     pass:
-      serverSource.includes("/api/test-image") &&
-      serverSource.includes("/api/test-video") &&
-      serverSource.includes("testProxy"),
+      appSource.includes("SHARK_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("BULL_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("GRAY_MOUSE_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("FROG_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("SUMO_INFLATABLE_PRESET_VIEWS") &&
+      appSource.includes("PRODUCT_GRAY_MOUSE_001") &&
+      appSource.includes("PRODUCT_FROG_001") &&
+      appSource.includes("PRODUCT_SUMO_001") &&
+      appSource.includes("灰色老鼠充气服") &&
+      appSource.includes("青蛙充气服") &&
+      appSource.includes("相扑充气服") &&
+      !appSource.includes("霸王龙充气服") &&
+      !appSource.includes("狮子充气服"),
   },
   {
-    name: "backend hides raw Cloudflare timeout HTML",
+    name: "user-facing detail-image upload has been removed",
     pass:
-      serverSource.includes("UPSTREAM_TIMEOUT_524") &&
-      serverSource.includes("上游接口处理超时"),
+      !appSource.includes("initialDetailSlots") &&
+      !appSource.includes("detailSlots") &&
+      !appSource.includes("detailViews") &&
+      !appSource.includes("detail_image_urls") &&
+      !appSource.includes("细节补充") &&
+      !styleSource.includes("detail-asset-grid") &&
+      !styleSource.includes("detail-card") &&
+      !styleSource.includes("detail-review-pane"),
   },
   {
-    name: "API settings are cached locally",
+    name: "preset auxiliary views are internal support evidence",
+    pass:
+      appSource.includes("supportViews") &&
+      appSource.includes("loadPresetSupportDataUrls") &&
+      appSource.includes("supportImageUrls") &&
+      appSource.includes("support_image_urls: supportImageUrls") &&
+      appSource.includes("FROG_INFLATABLE_SUPPORT_VIEWS") &&
+      appSource.includes("SUMO_INFLATABLE_SUPPORT_VIEWS") &&
+      serverSource.includes("support_image_urls") &&
+      serverSource.includes("Preset auxiliary support view") &&
+      serverSource.includes("same-product support evidence only"),
+  },
+  {
+    name: "dice buttons call the connected prompt model",
+    pass:
+      appSource.includes("Dices") &&
+      appSource.includes("prompt-label-row") &&
+      appSource.includes("dice-action") &&
+      appSource.includes("requestPromptSuggestion") &&
+      appSource.includes("scene_prompt: scenePrompt") &&
+      appSource.includes('fetch("/api/prompt-suggestion"') &&
+      appSource.includes("promptModel") &&
+      serverSource.includes("/api/prompt-suggestion") &&
+      serverSource.includes("proxyPromptSuggestion") &&
+      serverSource.includes("buildPromptSuggestionPayload") &&
+      serverSource.includes("只输出一段中文提示词"),
+  },
+  {
+    name: "image and prompt API credentials are backend-fixed, not user-entered",
+    pass:
+      !appSource.includes("imageBaseUrl: string") &&
+      !appSource.includes("imageApiKey: string") &&
+      !appSource.includes("apiSettings.imageBaseUrl") &&
+      !appSource.includes("apiSettings.imageApiKey") &&
+      !appSource.includes("图片 API Key") &&
+      !appSource.includes("image-api-url") &&
+      !appSource.includes("image-api-token") &&
+      appSource.includes("delete parsed.imageBaseUrl") &&
+      appSource.includes("delete parsed.imageApiKey") &&
+      appSource.includes("api-fixed-note") &&
+      appSource.includes("后台固定配置") &&
+      serverSource.includes("loadLocalEnv") &&
+      serverSource.includes(".env.local") &&
+      serverSource.includes("IMAGE_TEXT_BASE_URL") &&
+      serverSource.includes("IMAGE_TEXT_API_KEY") &&
+      serverSource.includes('kind === "image" || kind === "prompt"'),
+  },
+  {
+    name: "video API defaults to Wisech Seedance backend configuration",
+    pass:
+      serverSource.includes("VIDEO_BASE_URL") &&
+      serverSource.includes("VIDEO_API_KEY") &&
+      serverSource.includes("VIDEO_MODEL") &&
+      serverSource.includes("OPENAI_VIDEO_GENERATIONS_PATH") &&
+      serverSource.includes('const OPENAI_VIDEO_GENERATIONS_PATH = "/video/generations"') &&
+      serverSource.includes("proxyJson(OPENAI_VIDEO_GENERATIONS_PATH, buildVideoPayload(body), \"video\")") &&
+      serverSource.includes("buildOpenAICompatibleVideoPayload") &&
+      serverSource.includes("getVideoFirstFrameUrl") &&
+      serverSource.includes("image_with_roles") &&
+      serverSource.includes('role: "first_frame"') &&
+      serverSource.includes("metadata") &&
+      serverSource.includes("image_urls: [firstFrameUrl]") &&
+      serverSource.includes("视频生成必须提交已确认首帧 image_url") &&
+      serverSource.includes("hasVideoApiKey") &&
+      appSource.includes('videoBaseUrl: "https://ai.wisech.com/v1"') &&
+      appSource.includes('videoModel: "doubao-seedance-2-0-fast-260128"') &&
+      appSource.includes("doubao-seedance-1-5-pro-251215") &&
+      appSource.includes("VIDEO_MODEL_OPTIONS") &&
+      appSource.includes("<select value={props.apiSettings.videoModel}") &&
+      appSource.includes("后台已配置，留空即可"),
+  },
+  {
+    name: "backend product locks cover all five products",
+    pass:
+      serverSource.includes('return "cow"') &&
+      serverSource.includes('return "shark"') &&
+      serverSource.includes('return "mouse"') &&
+      serverSource.includes('return "frog"') &&
+      serverSource.includes('return "sumo"') &&
+      serverSource.includes("MANDATORY GRAY MOUSE INFLATABLE COSTUME VISUAL LOCKS") &&
+      serverSource.includes("MANDATORY FROG INFLATABLE COSTUME VISUAL LOCKS") &&
+      serverSource.includes("MANDATORY SUMO INFLATABLE COSTUME VISUAL LOCKS") &&
+      serverSource.includes("MANDATORY GRAY MOUSE INFLATABLE COSTUME VIDEO LOCKS") &&
+      serverSource.includes("MANDATORY FROG INFLATABLE COSTUME VIDEO LOCKS") &&
+      serverSource.includes("MANDATORY SUMO INFLATABLE COSTUME VIDEO LOCKS"),
+  },
+  {
+    name: "material and air-hardware locks are applied everywhere",
+    pass:
+      serverSource.includes("buildInflatableHardwareMaterialLocks") &&
+      serverSource.includes("MATERIAL AND AIR-HARDWARE HARD LOCK") &&
+      serverSource.includes("air inlet") &&
+      serverSource.includes("air outlet") &&
+      serverSource.includes("pump port") &&
+      serverSource.includes("inflation/deflation ports") &&
+      serverSource.includes("SHARK AIR-HARDWARE MAP") &&
+      serverSource.includes("COW AIR-HARDWARE MAP") &&
+      serverSource.includes("MOUSE AIR-HARDWARE MAP") &&
+      serverSource.includes("FROG AIR-HARDWARE MAP") &&
+      serverSource.includes("SUMO AIR-HARDWARE MAP") &&
+      serverSource.includes("...buildInflatableHardwareMaterialLocks(productType)") &&
+      serverSource.includes("buildPromptSuggestionHardwareMustMention") &&
+      appSource.includes("getAirHardwareMaterialLockNodes") &&
+      appSource.includes("Air_Hardware_Pump_Port_Placement") &&
+      appSource.includes("Inflatable_Material_Wrinkle_Zipper_Detail") &&
+      appSource.includes("air-hardware-material") &&
+      appSource.includes("进出气口泵口 / 材质细节正确"),
+  },
+  {
+    name: "video generation preserves the approved first frame instead of quality-redrawing it",
+    pass:
+      serverSource.includes("buildVideoFirstFramePixelAnchorLocks") &&
+      serverSource.includes("APPROVED FIRST-FRAME PIXEL ANCHOR LOCK") &&
+      serverSource.includes("not a loose style reference") &&
+      serverSource.includes("FRAME 1 EXACT START RULE") &&
+      serverSource.includes("HANDHELD PROP SAFETY RULE") &&
+      serverSource.includes("POSE AND CONTACT LOCK") &&
+      serverSource.includes("Quality rule") &&
+      serverSource.includes("ACTION OBJECT GUARDRAIL") &&
+      serverSource.includes("VIDEO QUALITY GUARDRAIL") &&
+      serverSource.includes("no quality-upscale redraw") &&
+      serverSource.includes("GRAY MOUSE VIDEO ANCHOR") &&
+      serverSource.includes("GRAY MOUSE HARD FAIL DETAILS") &&
+      serverSource.includes("FROG VIDEO ANCHOR") &&
+      serverSource.includes("FROG HARD FAIL DETAILS") &&
+      serverSource.includes("Handheld props are allowed") &&
+      serverSource.includes("must not replace the face window") &&
+      serverSource.includes("large black curved mouth band") &&
+      serverSource.includes("SHARK HARD FAIL DETAILS") &&
+      serverSource.includes("COW HARD FAIL DETAILS") &&
+      serverSource.includes("SUMO HARD FAIL DETAILS") &&
+      serverSource.includes("buildVideoFirstFramePixelAnchorLocks(productType)") &&
+      appSource.includes("首帧就是像素级身份锚点") &&
+      appSource.includes("不允许高清重绘") &&
+      appSource.includes("允许为了动作和喜剧效果出现手持道具") &&
+      appSource.includes("道具只能作为外部剧情道具") &&
+      appSource.includes("可见真人手/鞋") &&
+      appSource.includes("大块黑色弧形嘴带") &&
+      appSource.includes("双手重排抱袋") &&
+      appSource.includes("如果首帧是一只手拿零食袋、另一只手伸向货架"),
+  },
+  {
+    name: "video prompt dice generates lively humorous motion while preserving product locks",
+    pass:
+      serverSource.includes("灵动、幽默、略搞怪") &&
+      serverSource.includes("明显戏剧节奏") &&
+      serverSource.includes("2-3 个节拍的小短剧") &&
+      serverSource.includes("允许一个较明显但产品安全的大动作") &&
+      serverSource.includes("不能只是站着不动") &&
+      serverSource.includes("戏剧性来自场景反差") &&
+      serverSource.includes("输出开头必须是当前首帧场景动作") &&
+      serverSource.includes("当前首帧场景上下文") &&
+      serverSource.includes("不要让整段变成阀门、拉链、材质的清单") &&
+      serverSource.includes("严禁更换首帧场景类型") &&
+      serverSource.includes("SCENE ANCHOR") &&
+      serverSource.includes("至少两个原有道具词") &&
+      serverSource.includes("必须点名当前产品") &&
+      serverSource.includes("getProductStableName") &&
+      serverSource.includes("stable product name") &&
+      serverSource.includes("不要换场景，不要换产品名") &&
+      serverSource.includes("不要把原场景替换成相似场景") &&
+      serverSource.includes("sanitizeVideoPromptText") &&
+      serverSource.includes("可以写手持杯子、袋子、工具、标牌") &&
+      serverSource.includes("不能变成产品新增组件") &&
+      serverSource.includes("InputTextSensitiveContentDetected") === false &&
+      serverSource.includes("避免偷、被发现、推、撞、吓、攻击、摔倒、危险、求助"),
+  },
+  {
+    name: "OpenAI-compatible image edits are sent as multipart references",
+    pass:
+      serverSource.includes("buildOpenAIImageEditFormData") &&
+      serverSource.includes('form.append("image"') &&
+      serverSource.includes("sendMultipartImageEdit") &&
+      serverSource.includes("data:image/") &&
+      serverSource.includes("Only data:image/ or http(s) image inputs are supported"),
+  },
+  {
+    name: "four-view workflow still gates first frame and video generation",
+    pass:
+      appSource.includes('type StepId = "upload" | "firstFrame" | "video" | "qa"') &&
+      appSource.includes("requiredUrls = slots.map(getSlotImageUrl).filter(Boolean)") &&
+      appSource.includes("uploadReady = requiredUrls.length === slots.length") &&
+      appSource.includes("firstFrameReady = uploadReady && allLocksConfirmed") &&
+      appSource.includes("videoReady = firstFrameReady && Boolean(approvedFirstFrameUrl.trim()) && firstFrameApproved") &&
+      serverSource.includes("validateFourViewImages") &&
+      serverSource.includes("need exactly four readable core product view images") &&
+      serverSource.includes("CORE_VIEW_INPUT_ORDER") &&
+      serverSource.includes("FOUR-VIEW REFERENCES ARE TOPOLOGY MAPS"),
+  },
+  {
+    name: "video prompt edits do not invalidate approved first frame",
+    pass:
+      appSource.includes("function invalidateVideoOutputs()") &&
+      appSource.includes("function updateVideoActionPrompt") &&
+      appSource.includes("invalidateVideoOutputs();\n    setVideoActionPrompt(value);") &&
+      appSource.includes("setApprovedFirstFrameUrl(\"\")") &&
+      appSource.includes("function invalidateGeneratedOutputs()"),
+  },
+  {
+    name: "workflow docs match no-detail-upload preset-support contract",
+    pass:
+      !workflowZhSource.includes("detail_image_urls") &&
+      !workflowEnSource.includes("detail_image_urls") &&
+      workflowZhSource.includes("五个可穿戴充气服：鲨鱼、奶牛、灰色老鼠、青蛙、相扑") &&
+      workflowZhSource.includes("用户界面不提供细节图上传入口") &&
+      workflowZhSource.includes("support_image_urls") &&
+      workflowEnSource.includes("Users no longer upload detail images") &&
+      workflowEnSource.includes("No user-facing detail-image upload is exposed") &&
+      workflowEnSource.includes("support_image_urls"),
+  },
+  {
+    name: "API settings are cached locally including the prompt model",
     pass:
       appSource.includes("videoai.apiSettings") &&
       appSource.includes("window.localStorage.setItem") &&
       appSource.includes("loadApiSettings") &&
-      appSource.includes('merged.imagePath === "/images/generations"'),
-  },
-  {
-    name: "workflow docs define four-view product-consistency-first logic",
-    pass:
-      workflowZhSource.includes("上传四视图 -> 生成首帧 -> 生成视频 -> 视频质检") &&
-      workflowZhSource.includes("定款/锁定产品细节”是系统后台自动步骤") &&
-      workflowZhSource.includes("正面、左侧、右侧、背面四张核心图全部上传后") &&
-      workflowZhSource.includes("细节图是可选补充") &&
-      workflowZhSource.includes("四视图不是拼贴素材，也不是装饰参考") &&
-      workflowZhSource.includes("如果场景很好但产品漂移，该次生成失败") &&
-      workflowZhSource.includes("不再接受 `foreground_source_url`") &&
-      workflowEnSource.includes("Upload four views -> Generate first frame -> Generate video -> QA video") &&
-      workflowEnSource.includes("The product-lock step is internal and automatic") &&
-      workflowEnSource.includes("front, left-side, right-side, and back images") &&
-      workflowEnSource.includes("Detail images are optional supplements") &&
-      workflowEnSource.includes("If the scene is good but the product drifts, the generation fails"),
-  },
-  {
-    name: "upload completion enters first-frame while product lock stays internal",
-    pass:
-      appSource.includes("onComplete={() => completeUploadStep()}") &&
-      appSource.includes("function completeUploadStep()") &&
-      appSource.includes("autoLockedNodes") &&
-      appSource.includes('setActiveStep("firstFrame")') &&
-      !appSource.includes('activeStep === "upload" && uploadReady'),
-  },
-  {
-    name: "visible workflow has exactly four steps with no lock route",
-    pass:
-      appSource.includes("visibleSteps") &&
-      appSource.includes("const visibleSteps = steps") &&
-      appSource.includes("{visibleSteps.map((step, index) =>") &&
-      appSource.includes('type StepId = "upload" | "firstFrame" | "video" | "qa"') &&
-      styleSource.includes("grid-template-columns: repeat(4, minmax(0, 1fr))") &&
-      !appSource.includes('| "lock"') &&
-      !appSource.includes('id: "lock"') &&
-      !appSource.includes("function LockStep") &&
-      !appSource.includes("后台自动定款") &&
-      !appSource.includes("自动定款结果"),
-  },
-  {
-    name: "product upload requires four core product view images with optional details",
-    pass:
-      appSource.includes('id: "front"') &&
-      appSource.includes('label: "正面图"') &&
-      appSource.includes('id: "leftSide"') &&
-      appSource.includes('label: "左侧图"') &&
-      appSource.includes('id: "rightSide"') &&
-      appSource.includes('label: "右侧图"') &&
-      appSource.includes('id: "back"') &&
-      appSource.includes('label: "背面图"') &&
-      appSource.includes("initialDetailSlots") &&
-      appSource.includes('id: "detail"') &&
-      appSource.includes('label: "细节补充图"') &&
-      appSource.includes("细节图是可选补充") &&
-      appSource.includes("素材上传完成") &&
-      appSource.includes("核心四视图上传后") &&
-      appSource.includes("requiredUrls = slots.map(getSlotImageUrl).filter(Boolean)") &&
-      appSource.includes("detailUrls = detailSlots.map(getSlotImageUrl).filter(Boolean)") &&
-      appSource.includes("uploadReady = requiredUrls.length === slots.length") &&
-      appSource.includes('accept: "image/*"') &&
-      appSource.includes("accept={slot.accept}") &&
-      appSource.includes('viewMode: "四视图"') &&
-      !appSource.includes('id: "side"') &&
-      !appSource.includes('"三视图"') &&
-      !appSource.includes('id: "source"') &&
-      !appSource.includes("primaryProductSourceUrl") &&
-      !appSource.includes("source-asset-card"),
-  },
-  {
-    name: "shark inflatable preset auto-fills four core views",
-    pass:
-      sharkPresetFiles.every((file) => existsSync(file)) &&
-      appSource.includes("SHARK_INFLATABLE_PRESET_VIEWS") &&
-      appSource.includes("/product-presets/shark-inflatable/front.png") &&
-      appSource.includes("/product-presets/shark-inflatable/left.png") &&
-      appSource.includes("/product-presets/shark-inflatable/right.png") &&
-      appSource.includes("/product-presets/shark-inflatable/back.jpg") &&
-      appSource.includes("createPresetSlots") &&
-      appSource.includes("loadPresetSlotDataUrls") &&
-      appSource.includes('source: "preset"') &&
-      appSource.includes('source: "manual"') &&
-      appSource.includes("getProductPreset(costumeType)") &&
-      appSource.includes("viewUrls: SHARK_INFLATABLE_PRESET_VIEWS.map"),
-  },
-  {
-    name: "four uploaded view images are converted to model-readable inputs",
-    pass:
-      appSource.includes("await readFileAsDataUrl(file)") &&
-      appSource.includes("getSlotImageUrl") &&
-      appSource.includes("image_urls: requiredUrls") &&
-      appSource.includes("detail_image_urls: detailUrls") &&
-      !appSource.includes("primaryProductSourceUrl") &&
-      !appSource.includes("foreground_source_url") &&
-      !appSource.includes("audit_image_urls") &&
-      !appSource.includes("参考图 URL") &&
-      serverSource.includes("validateFourViewImages") &&
-      serverSource.includes("need exactly four readable core product view images") &&
-      serverSource.includes("detail_image_urls") &&
-      serverSource.includes("不接受 foreground_source_url") &&
-      serverSource.includes("blob:") &&
-      serverSource.includes("data:image/"),
-  },
-  {
-    name: "product changes invalidate generated first frame and video state",
-    pass:
-      appSource.includes("function invalidateGeneratedOutputs()") &&
-      appSource.includes("setApprovedFirstFrameUrl(\"\")") &&
-      appSource.includes("setFirstFrameApproved(false)") &&
-      appSource.includes("setVideoStatus(\"idle\")") &&
-      appSource.includes("setVideoUrl(\"\")") &&
-      appSource.includes("invalidateGeneratedOutputs();\n    setActiveStep(\"upload\")") &&
-      appSource.includes("function updateScenePrompt") &&
-      appSource.includes("function updateAspectRatio"),
-  },
-  {
-    name: "timeline prevents skipping gated workflow steps",
-    pass:
-      appSource.includes("function selectStep(step: StepId)") &&
-      appSource.includes('if (step === "firstFrame" && uploadReady)') &&
-      appSource.includes('if (step === "video" && videoReady)') &&
-      appSource.includes('if (step === "qa" && Boolean(videoUrl))') &&
-      appSource.includes("canEnterFirstFrame") &&
-      appSource.includes("canEnterVideo") &&
-      appSource.includes("canEnterQa") &&
-      appSource.includes('aria-disabled={isLocked}') &&
-      styleSource.includes(".timeline-step.locked"),
-  },
-  {
-    name: "generation paths stay hidden in the backend",
-    pass:
-      !appSource.includes("path: apiSettings.imagePath") &&
-      !appSource.includes("path: apiSettings.videoPath") &&
-      appSource.includes('imagePath: ""') &&
-      appSource.includes('videoPath: ""') &&
-      !appSource.includes("图片路径") &&
-      !appSource.includes("视频路径") &&
-      serverSource.includes('proxyJson("/images/edits", buildFirstFramePayload(body), "image")') &&
-      serverSource.includes('proxyJson("/responses", buildVideoPayload(body), "video")'),
-  },
-  {
-    name: "first-frame uses four-view product lock workflow",
-    pass:
-      appSource.includes("scene_prompt: scenePrompt") &&
-      appSource.includes("locked_nodes: lockNodes.map") &&
-      appSource.includes("image_urls: requiredUrls") &&
-      appSource.includes("detail_image_urls: detailUrls") &&
-      appSource.includes("firstFrameReady = uploadReady && allLocksConfirmed") &&
-      appSource.includes("首帧不过审，不进入视频") &&
-      !appSource.includes("prompt: firstFramePrompt") &&
-      serverSource.includes("HIGHEST PRIORITY FOUR-VIEW PRODUCT FIRST-FRAME CONTRACT") &&
-      serverSource.includes("front view, left-side view, right-side view, and back view") &&
-      serverSource.includes("Optional detail supplement images") &&
-      serverSource.includes("Do not average the core views into a new product") &&
-      serverSource.includes("image_urls: [...readableImages, ...readableDetailImages]") &&
-      serverSource.includes("If the scene conflicts with product fidelity, simplify the scene") &&
-      serverSource.includes("LOWER PRIORITY SCENE ONLY") &&
-      serverSource.includes("buildFirstFramePayload(body)"),
-  },
-  {
-    name: "generic first-frame API sends references as image edit inputs",
-    pass:
-      serverSource.includes("buildOpenAIImageEditPayload") &&
-      serverSource.includes("images: imageUrls.map((image_url) => ({ image_url }))") &&
-      serverSource.includes('input_fidelity: "high"') &&
-      serverSource.includes("imageEditSizeFromAspectRatio") &&
-      serverSource.includes("resolveImageEditUrl") &&
-      serverSource.includes('"/images/edits"') &&
-      !serverSource.includes("buildUpstreamPayload"),
-  },
-  {
-    name: "first-frame references are bound to explicit view roles",
-    pass:
-      serverSource.includes("CORE_VIEW_INPUT_ORDER") &&
-      serverSource.includes("image_urls[0] = FRONT_VIEW") &&
-      serverSource.includes("image_urls[1] = LEFT_SIDE_VIEW") &&
-      serverSource.includes("image_urls[2] = RIGHT_SIDE_VIEW") &&
-      serverSource.includes("image_urls[3] = BACK_VIEW") &&
-      serverSource.includes("Core reference 1 FRONT_VIEW") &&
-      serverSource.includes("Optional detail supplement") &&
-      !serverSource.includes("imageUrls.map((image) => ({ image }))"),
-  },
-  {
-    name: "first-frame prompt resolves visibility conflicts instead of forcing hidden details",
-    pass:
-      serverSource.includes("Do not force hidden side or rear details into a front-facing frame") &&
-      serverSource.includes("Visible-detail rule") &&
-      serverSource.includes("side valve is optional in a front camera") &&
-      serverSource.includes("rear tail fin is hidden in a front camera") &&
-      !serverSource.includes("no crop of feet, tail, fan valve, or face window"),
-  },
-  {
-    name: "user-facing URL fields are hidden from first-frame workflow",
-    pass:
-      !appSource.includes("已确认首帧 URL") &&
-      !appSource.includes('placeholder="https://..."') &&
-      !appSource.includes("setApprovedUrl: (value: string) => void") &&
-      appSource.includes("setApprovedFirstFrameUrl(imageUrl)") &&
-      appSource.includes("确认产品一致，批准首帧"),
-  },
-  {
-    name: "workspace layout uses wide main canvas and compact typography",
-    pass:
-      styleSource.includes("grid-template-columns: 132px minmax(0, 1fr)") &&
-      styleSource.includes("grid-template-columns: minmax(0, 1fr) 260px") &&
-      styleSource.includes("grid-template-columns: repeat(4, minmax(0, 1fr))") &&
-      styleSource.includes("font-size: 12px") &&
-      !styleSource.includes("font-size: max(24px, 1em)") &&
-      !styleSource.includes("font-size: 24px") &&
-      !styleSource.includes("font-size: 26px") &&
-      !styleSource.includes("font-size: 28px") &&
-      !styleSource.includes("font-size: 30px") &&
-      !styleSource.includes("font-size: 36px") &&
-      !styleSource.includes("font-size: 56px") &&
-      !styleSource.includes("font-size: 34px") &&
-      !styleSource.includes("font-size: clamp(56px") &&
-      !styleSource.includes("font-size: clamp(56px, 6vw, 72px)"),
-  },
-  {
-    name: "video product consistency is enforced on the backend",
-    pass:
-      appSource.includes("action_prompt: videoActionPrompt") &&
-      appSource.includes("scene_prompt: scenePrompt") &&
-      appSource.includes("locked_nodes: lockNodes.map") &&
-      !appSource.includes("prompt: videoPrompt") &&
-      serverSource.includes("HIGHEST PRIORITY PRODUCT CONSISTENCY VIDEO CONTRACT") &&
-      serverSource.includes("FOUR-VIEW PRODUCT HARD LOCK") &&
-      serverSource.includes("locked dead across all frames") &&
-      serverSource.includes("LOWER PRIORITY USER ACTION ONLY") &&
-      serverSource.includes("buildVideoPayload(body)") &&
-      serverSource.includes("buildProductVideoPrompt"),
-  },
-  {
-    name: "video request carries four-view context and does not overclaim visual inputs",
-    pass:
-      appSource.includes("image_urls: requiredUrls") &&
-      appSource.includes("detail_image_urls: detailUrls") &&
-      serverSource.includes("const readableImages = Array.isArray(image_urls)") &&
-      serverSource.includes("Approved first frame is the direct video media input") &&
-      serverSource.includes("FOUR-VIEW TEXT CONTRACT") &&
-      serverSource.includes("Keep the camera inside the approved first-frame view family") &&
-      !serverSource.includes("The approved first frame plus the uploaded front, left-side, right-side, and back core references are the non-negotiable source of truth"),
-  },
-  {
-    name: "first-frame approval is gated by critical review checklist",
-    pass:
-      appSource.includes("firstFrameReviewChecks") &&
-      appSource.includes("allFirstFrameReviewChecksPassed") &&
-      appSource.includes("setFirstFrameReviewState") &&
-      appSource.includes("ALL_CRITICAL_FIRST_FRAME_CHECKS_REQUIRED") &&
-      appSource.includes("disabled={!props.allReviewChecksPassed") &&
-      appSource.includes("review-checklist") &&
-      appSource.includes("onReviewCheck"),
-  },
-  {
-    name: "first-frame review supports explicit pass and fail decisions",
-    pass:
-      appSource.includes('type ReviewDecision = "pending" | "pass" | "fail"') &&
-      appSource.includes("failedFirstFrameReviewChecks") &&
-      appSource.includes("hasFailedFirstFrameReviewChecks") &&
-      appSource.includes('decision === "fail"') &&
-      appSource.includes("首帧审核未通过") &&
-      appSource.includes("重新生成首帧") &&
-      appSource.includes("正确") &&
-      appSource.includes("错误") &&
-      !appSource.includes("Record<ReviewCheckId, boolean>") &&
-      !appSource.includes('type="checkbox"'),
-  },
-  {
-    name: "shark costume identity locks are explicit",
-    pass:
-      appSource.includes("Side_Eye_Gill_Stripes") &&
-      appSource.includes("Orange_Side_Blower_Valve") &&
-      appSource.includes("Back_Tail_Fin_Seam") &&
-      appSource.includes("Body_Volume_Envelope") &&
-      appSource.includes("View_Topology_Detail_Placement") &&
-      serverSource.includes("exactly five black curved gill stripes") &&
-      serverSource.includes("orange circular blower valve") &&
-      serverSource.includes("horizontal transparent face window") &&
-      serverSource.includes("centered blue rear tail fin"),
-  },
-  {
-    name: "view topology prevents cross-view detail relocation",
-    pass:
-      serverSource.includes("VIEW TOPOLOGY LOCK") &&
-      serverSource.includes("Do not merge details from different views") &&
-      serverSource.includes("FOUR-VIEW REFERENCES ARE TOPOLOGY MAPS, NOT COLLAGE REQUIREMENTS") &&
-      serverSource.includes("PRIMARY CAMERA IS FRONT-FACING BY DEFAULT") &&
-      serverSource.includes("do not switch to side or rear unless the user explicitly asks") &&
-      serverSource.includes("Choose one primary camera family before rendering") &&
-      serverSource.includes("left side, right side") &&
-      serverSource.includes("Visibility matrix") &&
-      serverSource.includes("Do not satisfy product consistency by showing all reference details in one generated frame") &&
-      serverSource.includes("rear tail fin belongs on the back centerline only") &&
-      serverSource.includes("never move a rear tail fin to the side waist") &&
-      serverSource.includes("detail that is not visible from the current angle must remain hidden"),
-  },
-  {
-    name: "shape and inflation envelope is locked for image and video",
-    pass:
-      serverSource.includes("SHAPE AND VOLUME ENVELOPE LOCK") &&
-      serverSource.includes("low-to-medium inflated") &&
-      serverSource.includes("must not become skinny") &&
-      serverSource.includes("fully taut inflated display suit") &&
-      serverSource.includes("HUMAN-SCALE SIZE LOCK") &&
-      serverSource.includes("HUMAN-BODY ENVELOPE") &&
-      serverSource.includes("not a giant mascot shell") &&
-      serverSource.includes("must stay close to the wearer's body scale") &&
-      serverSource.includes("head height, head width, body width, and side thickness must not grow beyond the references") &&
-      serverSource.includes("giant rounded head, barrel-shaped torso") &&
-      serverSource.includes("full taut mascot shell instead of a person-sized wearable suit") &&
-      serverSource.includes("four-view silhouette") &&
-      serverSource.includes("45%-55%") &&
-      serverSource.includes("Wrinkle density and slight looseness are fidelity markers") &&
-      serverSource.includes("No swelling, shrinking, melting, stretching, smoothing, or mascot-shell enlargement across frames"),
-  },
-  {
-    name: "first-frame review rejects overinflated mascot scale",
-    pass:
-      appSource.includes("human-body-envelope") &&
-      appSource.includes("人体体型包络 / 不过度鼓胀") &&
-      appSource.includes("巨大圆顶、桶状身体、站立气球或吉祥物外壳") &&
-      workflowZhSource.includes("人体体型包络：产品必须像真人穿着一件轻到中度充气服") &&
-      workflowZhSource.includes("一旦首帧像巨大吉祥物、桶状气球、全鼓展示道具"),
-  },
-  {
-    name: "DashScope HappyHorse video endpoint is supported",
-    pass:
-      appSource.includes("happyhorse-1.0-i2v") &&
-      appSource.includes("dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis") &&
-      appSource.includes('"https://dashscope.aliyuncs.com/api/v1"') &&
-      serverSource.includes("DASHSCOPE_VIDEO_SYNTHESIS_PATH") &&
-      serverSource.includes("cleanEndpointText") &&
-      serverSource.includes("X-DashScope-Async") &&
-      serverSource.includes("buildDashScopeVideoPayload") &&
-      serverSource.includes('type: "first_frame"') &&
-      serverSource.includes("media") &&
-      serverSource.includes("watermark: false"),
-  },
-  {
-    name: "first frame stays reviewable before manual video step",
-    pass:
-      appSource.includes("进入视频生成") &&
-      appSource.includes("onNext={() => setActiveStep(\"video\")}") &&
-      !appSource.includes('activeStep === "firstFrame" && videoReady'),
-  },
-  {
-    name: "video prompt is user editable and technical prompt stays internal",
-    pass:
-      appSource.includes("videoActionPrompt") &&
-      appSource.includes("视频动作描述") &&
-      appSource.includes("setPrompt={setVideoActionPrompt}") &&
-      !appSource.includes("<textarea value={props.prompt} readOnly />"),
-  },
-  {
-    name: "default UI prompts are conservative for product consistency testing",
-    pass:
-      appSource.includes("真人穿着上传四视图中的鲨鱼充气服") &&
-      appSource.includes("全身入镜、身体直立、双脚落地") &&
-      appSource.includes("场景只做背景") &&
-      appSource.includes("人物保持正面姿态和原地站位") &&
-      appSource.includes("镜头稳定、无旋转、无变焦、无大步行走") &&
-      appSource.includes("产品尺寸、人体体型包络、脸窗、拉链、阀门、尾鳍位置全程不变"),
-  },
-  {
-    name: "light backend has planned product asset library",
-    pass:
-      appSource.includes("type ProductAsset") &&
-      appSource.includes("viewMode") &&
-      appSource.includes("viewUrls") &&
-      appSource.includes("lockedNodeCodes") &&
-      appSource.includes("productAssetPlan") &&
-      appSource.includes("PRODUCT_SHARK_001") &&
-      appSource.includes("product-library-plan"),
-  },
-  {
-    name: "DashScope image models are not forced into video async mode",
-    pass:
-      serverSource.includes("DASHSCOPE_IMAGE_GENERATION_PATH") &&
-      serverSource.includes("buildDashScopeImagePayload") &&
-      serverSource.includes("buildLabeledImageContent(imageUrls)") &&
-      serverSource.includes("return kind === \"video\" ? buildDashScopeVideoPayload(upstreamPayload) : buildDashScopeImagePayload(upstreamPayload)") &&
-      serverSource.includes('isDashScopeUrl(resolvedUpstreamUrl) && kind === "video"') &&
-      appSource.includes("findUrlByKey(record.output"),
-  },
-  {
-    name: "video generation polls async tasks and renders results",
-    pass:
-      serverSource.includes("/api/video-status") &&
-      serverSource.includes("buildDashScopeTaskUrl") &&
-      serverSource.includes("/tasks/") &&
-      appSource.includes("videoTaskId") &&
-      appSource.includes("extractVideoUrl") &&
-      appSource.includes("setVideoStatus(\"polling\")") &&
-      appSource.includes("<video controls playsInline"),
-  },
-  {
-    name: "Volcengine Ark Seedance video tasks are supported",
-    pass:
-      serverSource.includes("VOLCENGINE_VIDEO_TASKS_PATH") &&
-      serverSource.includes("buildVolcengineVideoPayload") &&
-      serverSource.includes("buildVolcengineTaskUrl") &&
-      serverSource.includes('type: "image_url"') &&
-      !serverSource.includes("reference_image") &&
-      serverSource.includes("contents/generations/tasks") &&
-      appSource.includes("record.id_str") &&
-      appSource.includes("content_url"),
-  },
-  {
-    name: "API fields disable browser autofill",
-    pass:
-      appSource.includes('autoComplete="off"') &&
-      appSource.includes('autoComplete="new-password"') &&
-      appSource.includes('name="image-api-url"') &&
-      appSource.includes('name="image-api-token"'),
-  },
-  {
-    name: "right API status panel was removed",
-    pass: !appSource.includes("function ApiPanel") && !appSource.includes("接口状态"),
-  },
-  {
-    name: "images render without cropping",
-    pass:
-      styleSource.includes("object-fit: contain") &&
-      styleSource.includes(".preview-image"),
+      appSource.includes('promptModel: "gpt-4.1-mini"') &&
+      appSource.includes("merged.imagePath") &&
+      appSource.includes("merged.videoPath"),
   },
 ];
 
@@ -475,5 +312,8 @@ for (const check of checks) {
 }
 
 if (failed.length > 0) {
-  process.exitCode = 1;
+  console.error(`\nBaseline failed: ${failed.length} check(s).`);
+  process.exit(1);
 }
+
+console.log("\nBaseline passed.");

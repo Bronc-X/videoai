@@ -3,6 +3,7 @@ import {
   ClipboardCheck,
   CloudUpload,
   Database,
+  Dices,
   FileImage,
   Film,
   Image,
@@ -49,14 +50,13 @@ type LockNode = {
 };
 
 type ApiSettings = {
-  imageBaseUrl: string;
   imagePath: string;
-  imageApiKey: string;
   imageModel: string;
   videoBaseUrl: string;
   videoPath: string;
   videoApiKey: string;
   videoModel: string;
+  promptModel: string;
 };
 
 type HistoryItem = {
@@ -73,8 +73,34 @@ type ProductAsset = {
   type: string;
   viewMode: "四视图";
   viewUrls: string[];
+  supportViewUrls: string[];
+  referenceVideoUrls: string[];
   lockedNodeCodes: string[];
   updatedAt: string;
+};
+
+type ProductPresetView = {
+  slotId: string;
+  fileName: string;
+  localUrl: string;
+};
+
+type ProductReferenceVideo = {
+  fileName: string;
+  localUrl: string;
+};
+
+type ProductPresetSupportView = {
+  fileName: string;
+  localUrl: string;
+};
+
+type ProductPreset = {
+  productType: string;
+  views: readonly ProductPresetView[];
+  supportViews?: readonly ProductPresetSupportView[];
+  referenceVideos: readonly ProductReferenceVideo[];
+  lockNodes: readonly LockNode[];
 };
 
 const STORAGE_KEY = "videoai.apiSettings";
@@ -88,17 +114,17 @@ const steps: Array<{ id: StepId; label: string; shortLabel: string; description:
 const visibleSteps = steps;
 
 const initialSlots: UploadSlot[] = [
-  { id: "front", label: "正面图", badge: "FRONT", hint: "白肚、透明脸窗、拉链、脚部比例", accept: "image/*", fileName: "", localUrl: "" },
-  { id: "leftSide", label: "左侧图", badge: "LEFT", hint: "左侧厚度、眼睛/鳃线、阀门可见性", accept: "image/*", fileName: "", localUrl: "" },
-  { id: "rightSide", label: "右侧图", badge: "RIGHT", hint: "右侧厚度、阀门方向、侧鳍和侧缝", accept: "image/*", fileName: "", localUrl: "" },
-  { id: "back", label: "背面图", badge: "BACK", hint: "纯蓝背部、中轴尾鳍、背部竖缝", accept: "image/*", fileName: "", localUrl: "" },
-];
-
-const initialDetailSlots: UploadSlot[] = [
-  { id: "detail", label: "细节补充图", badge: "DETAIL", hint: "可选：阀门、脸窗、拉链、缝线、褶皱或材质近景", accept: "image/*", fileName: "", localUrl: "" },
+  { id: "front", label: "正面图", badge: "FRONT", hint: "正面轮廓、主要图案、核心组件、脚部比例", accept: "image/*", fileName: "", localUrl: "" },
+  { id: "leftSide", label: "左侧图", badge: "LEFT", hint: "左侧厚度、侧面组件、阀门/缝线可见性", accept: "image/*", fileName: "", localUrl: "" },
+  { id: "rightSide", label: "右侧图", badge: "RIGHT", hint: "右侧厚度、侧面图案、阀门方向和边缘结构", accept: "image/*", fileName: "", localUrl: "" },
+  { id: "back", label: "背面图", badge: "BACK", hint: "背面轮廓、中轴结构、拉链/尾部/阀门归位", accept: "image/*", fileName: "", localUrl: "" },
 ];
 
 const SHARK_INFLATABLE_TYPE = "鲨鱼充气服";
+const BULL_INFLATABLE_TYPE = "奶牛充气服";
+const GRAY_MOUSE_INFLATABLE_TYPE = "灰色老鼠充气服";
+const FROG_INFLATABLE_TYPE = "青蛙充气服";
+const SUMO_INFLATABLE_TYPE = "相扑充气服";
 const SHARK_INFLATABLE_PRESET_VIEWS = [
   { slotId: "front", fileName: "shark-front.png", localUrl: "/product-presets/shark-inflatable/front.png" },
   { slotId: "leftSide", fileName: "shark-left.png", localUrl: "/product-presets/shark-inflatable/left.png" },
@@ -106,34 +132,63 @@ const SHARK_INFLATABLE_PRESET_VIEWS = [
   { slotId: "back", fileName: "shark-back.jpg", localUrl: "/product-presets/shark-inflatable/back.jpg" },
 ] as const;
 
-const productPresets = [
-  {
-    productType: SHARK_INFLATABLE_TYPE,
-    views: SHARK_INFLATABLE_PRESET_VIEWS,
-  },
+const SHARK_INFLATABLE_REFERENCE_VIDEOS = [
+  { fileName: "shark-reference-01.mp4", localUrl: "/product-presets/shark-inflatable/reference-01.mp4" },
+  { fileName: "shark-reference-02.mp4", localUrl: "/product-presets/shark-inflatable/reference-02.mp4" },
 ] as const;
 
-function getProductPreset(productType: string) {
-  return productPresets.find((preset) => preset.productType === productType);
-}
+const BULL_INFLATABLE_PRESET_VIEWS = [
+  { slotId: "front", fileName: "bull-front.jpg", localUrl: "/product-presets/bull-inflatable/front.jpg" },
+  { slotId: "leftSide", fileName: "bull-left.jpg", localUrl: "/product-presets/bull-inflatable/left.jpg" },
+  { slotId: "rightSide", fileName: "bull-right.jpg", localUrl: "/product-presets/bull-inflatable/right.jpg" },
+  { slotId: "back", fileName: "bull-back.jpg", localUrl: "/product-presets/bull-inflatable/back.jpg" },
+] as const;
 
-function createPresetSlots(productType: string): UploadSlot[] {
-  const preset = getProductPreset(productType);
-  if (!preset) return initialSlots;
-  return initialSlots.map((slot) => {
-    const view = preset.views.find((item) => item.slotId === slot.id);
-    return view
-      ? { ...slot, fileName: view.fileName, localUrl: view.localUrl, dataUrl: "", source: "preset" }
-      : slot;
-  });
-}
+const BULL_INFLATABLE_REFERENCE_VIDEOS = [
+  { fileName: "bull-reference-01.mp4", localUrl: "/product-presets/bull-inflatable/reference-01.mp4" },
+] as const;
 
-const initialNodes: LockNode[] = [
+const GRAY_MOUSE_INFLATABLE_PRESET_VIEWS = [
+  { slotId: "front", fileName: "gray-mouse-front.jpg", localUrl: "/product-presets/gray-mouse-inflatable/front.jpg" },
+  { slotId: "leftSide", fileName: "gray-mouse-left.jpg", localUrl: "/product-presets/gray-mouse-inflatable/left.jpg" },
+  { slotId: "rightSide", fileName: "gray-mouse-right.jpg", localUrl: "/product-presets/gray-mouse-inflatable/right.jpg" },
+  { slotId: "back", fileName: "gray-mouse-back.jpg", localUrl: "/product-presets/gray-mouse-inflatable/back.jpg" },
+] as const;
+
+const GRAY_MOUSE_INFLATABLE_REFERENCE_VIDEOS = [] as readonly ProductReferenceVideo[];
+
+const FROG_INFLATABLE_PRESET_VIEWS = [
+  { slotId: "front", fileName: "frog-front.jpg", localUrl: "/product-presets/frog-inflatable/front.jpg" },
+  { slotId: "leftSide", fileName: "frog-left.jpg", localUrl: "/product-presets/frog-inflatable/left.jpg" },
+  { slotId: "rightSide", fileName: "frog-right.jpg", localUrl: "/product-presets/frog-inflatable/right.jpg" },
+  { slotId: "back", fileName: "frog-back.jpg", localUrl: "/product-presets/frog-inflatable/back.jpg" },
+] as const;
+
+const FROG_INFLATABLE_SUPPORT_VIEWS = [
+  { fileName: "frog-support-right-alt.jpg", localUrl: "/product-presets/frog-inflatable/support-right-alt.jpg" },
+] as const;
+
+const FROG_INFLATABLE_REFERENCE_VIDEOS = [] as readonly ProductReferenceVideo[];
+
+const SUMO_INFLATABLE_PRESET_VIEWS = [
+  { slotId: "front", fileName: "sumo-front.jpg", localUrl: "/product-presets/sumo-inflatable/front.jpg" },
+  { slotId: "leftSide", fileName: "sumo-left.jpg", localUrl: "/product-presets/sumo-inflatable/left.jpg" },
+  { slotId: "rightSide", fileName: "sumo-right.jpg", localUrl: "/product-presets/sumo-inflatable/right.jpg" },
+  { slotId: "back", fileName: "sumo-back.jpg", localUrl: "/product-presets/sumo-inflatable/back.jpg" },
+] as const;
+
+const SUMO_INFLATABLE_SUPPORT_VIEWS = [
+  { fileName: "sumo-support-rear-valve.jpg", localUrl: "/product-presets/sumo-inflatable/support-rear-valve.jpg" },
+] as const;
+
+const SUMO_INFLATABLE_REFERENCE_VIDEOS = [] as readonly ProductReferenceVideo[];
+
+const SHARK_INFLATABLE_LOCK_NODES: LockNode[] = [
   {
     id: "front-window-zipper",
     label: "正面透明脸窗 / 中线拉链",
     code: "Front_Window_Zipper",
-    detail: "保留白色腹部上的横向透明脸窗、透明反光材质、脸窗下方垂直拉链和中轴缝线。",
+    detail: "保留白色腹部上方的小号浅弧形横向梯形透明脸窗、透明反光材质、脸窗下方垂直拉链和中轴缝线；脸窗不能变成大矩形、宽面罩、嘴巴、牙齿或笑脸。",
     confidence: 0.98,
     critical: true,
     confirmed: true,
@@ -178,7 +233,7 @@ const initialNodes: LockNode[] = [
     id: "fabric-color-silhouette",
     label: "蓝白色块 / 人体体型包络",
     code: "Moderate_Inflation_Silhouette",
-    detail: "锁定四视图共同的人穿服体型：充气外壳只比真人肩宽和躯干略宽，不能变成巨大圆顶头、桶状身体、站立气球或吉祥物外壳；保留上宽下收、腰胯收窄、两条独立裤腿、脚套褶皱和黑鞋露出。",
+    detail: "锁定四视图共同的人穿服体型和偏青的柔和蓝色尼龙：充气外壳只比真人肩宽和躯干略宽，整体偏扁、偏软、略微蔫皱，不能变成高饱和亮蓝、巨大圆顶头、竖直胶囊身体、桶状身体、站立气球或吉祥物外壳；保留上宽下收、腰胯收窄、两条独立裤腿、脚套褶皱和黑鞋露出。两侧手鳍必须贴近身体自然下垂或小幅外展，不能横向拉平成飞机翅膀、滑翔翼或超宽大鳍。",
     confidence: 0.95,
     critical: true,
     confirmed: true,
@@ -187,12 +242,427 @@ const initialNodes: LockNode[] = [
     id: "body-volume-envelope",
     label: "体积包络 / 身宽比例",
     code: "Body_Volume_Envelope",
-    detail: "正面白色腹部宽度约占身体总宽 45%-55%；头部宽高、躯干宽度和侧面厚度不得超过四视图参考；侧面胸腹是可穿戴服厚度，不是圆柱气球；背面不能膨胀成无结构圆柱。",
+    detail: "正面白色腹部宽度约占身体总宽 45%-55%；头部宽高、躯干宽度、手鳍长度和侧面厚度不得超过四视图参考；身体要接近轻度欠充气的柔软尼龙套服，侧面胸腹是可穿戴服厚度，不是竖直胶囊、圆柱气球或饱满鱼雷；背面不能膨胀成无结构圆柱。",
     confidence: 0.93,
     critical: true,
     confirmed: true,
   },
+  {
+    id: "shark-underinflated-fin-color-hard-lock",
+    label: "Shark volume / color / fin hard lock",
+    code: "Shark_Underinflated_Fin_Color_Hard_Lock",
+    detail:
+      "Hard fail if the shark becomes a huge vertical capsule, torpedo, cylinder balloon, giant mascot shell, glossy display prop, vivid/electric/cobalt blue body, or a fully taut overinflated tube. It must stay muted cyan-blue nylon, human-scale, lightly underinflated, softer, flatter, slightly sagging and wrinkled. For a front camera, preserve the uploaded front-view outline and imperfect nylon contour instead of making a cleaner symmetric studio silhouette; keep the blue side border modest, the long white belly panel dominant, and the waist-to-leg transition close to the reference. The side hand fins must stay short, fabric-soft, close to the body or only mildly angled outward; never stretch into horizontal airplane wings, glider wings, cape wings, huge paddles, manta-ray wings, or an extra-wide silhouette.",
+    confidence: 0.99,
+    critical: true,
+    confirmed: true,
+  },
 ];
+
+const BULL_INFLATABLE_LOCK_NODES: LockNode[] = [
+  {
+    id: "cow-head-horns-ears",
+    label: "奶牛头部 / 双角 / 双耳",
+    code: "Cow_Head_Horns_Ears",
+    detail: "保留白色大圆奶牛头、顶部小黑毛撮、两只奶白色向上弯角、两侧黑色外耳和粉色内耳；不能变成真实牛头、公牛头盔、毛绒玩偶或额外耳角结构。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-face-snout-eyes",
+    label: "脸部蓝眼 / 粉鼻口 / 腮红",
+    code: "Cow_Face_Snout_Eyes",
+    detail: "锁定两只蓝色卡通眼睛、黑色眉毛、粉色圆鼻口、两个黑色鼻孔、黑色微笑线和两侧粉色圆腮红；嘴鼻不能缩小、错位、消失或换成真实动物表情。",
+    confidence: 0.95,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-black-white-patches",
+    label: "黑白奶牛斑 / 色块归位",
+    code: "Cow_Black_White_Patches",
+    detail: "白色充气身体上必须保留不规则黑色奶牛斑，头、躯干、手臂、腿部和背面的斑块密度接近四视图；不能变成纯白、斑马纹、豹纹、统一圆点或重新设计的图案。",
+    confidence: 0.93,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-front-udder",
+    label: "正面粉色乳房 / 四个奶头",
+    code: "Cow_Front_Udder",
+    detail: "正面下腹中央必须保留粉色圆形凸起乳房和四个粉色奶头，位置在腹部偏下、两腿上方；不能移动到侧面、背面、胸口，也不能省略或改成口袋装饰。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-hooves-limbs",
+    label: "黑色蹄套 / 四肢比例",
+    code: "Cow_Black_Hooves_Limbs",
+    detail: "保留黑色蹄形手套和黑色脚蹄套，手臂为短充气袖、腿为分开的宽松裤腿；不能变成人手、人鞋、细腿、额外手臂或动物四足姿态。",
+    confidence: 0.91,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-back-zipper-valve-tail",
+    label: "背部拉链 / 橙色阀门 / 白尾黑尖",
+    code: "Cow_Back_Zipper_Valve_Tail",
+    detail: "背面必须保留头背到躯干的中轴竖向拉链/缝线、右后侧橙色圆形鼓风阀、臀部中轴向下的白色尾巴和黑色尾尖；这些结构只在背面或物理可见侧出现，不能挪到正面。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-human-scale-envelope",
+    label: "155-190cm 人体穿戴体型 / 不过度鼓胀",
+    code: "Cow_Human_Scale_Envelope",
+    detail: "锁定四视图共同的 155-190cm 真人穿戴比例：圆润但仍是人体站姿，头和躯干只比真人略宽，腰胯和分腿清楚；不能膨胀成巨大吉祥物、展示气球、圆柱身体或真实动物身体。",
+    confidence: 0.98,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "cow-view-topology",
+    label: "视角拓扑 / 奶牛组件归位",
+    code: "Cow_View_Topology_Placement",
+    detail: "正面拥有脸部、粉色乳房和前身斑块；侧面显示鼻口凸出、侧身厚度、手臂和侧身斑块；背面拥有拉链、橙色阀门和尾巴。看不见的结构自然隐藏，不能为了展示挪位。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+];
+
+const GRAY_MOUSE_INFLATABLE_LOCK_NODES: LockNode[] = [
+  {
+    id: "mouse-head-face",
+    label: "灰鼠头脸 / 透明脸窗 / 鼻口",
+    code: "Mouse_Head_Face_Window_Snout",
+    detail: "保留浅灰色老鼠头部、两只圆耳、米色耳内和米色鼻口区域、突出的灰色鼻嘴、黑色张口和棕色卡通眼睛；脸部窗口和鼻嘴形状不能改成兔子、熊、猫、真实老鼠或通用吉祥物表情。",
+    confidence: 0.95,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "mouse-belly-tail",
+    label: "米色腹部 / 米黄尾巴",
+    code: "Mouse_Cream_Belly_Tail",
+    detail: "正面必须保留大块米色椭圆腹部；侧面和背面必须保留米黄尾巴，尾巴从后腰/臀部位置伸出，不能移动到正面腹部、手臂或头顶，也不能变成细真实鼠尾。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "mouse-back-zipper-valve",
+    label: "背部拉链 / 绿色鼓风阀",
+    code: "Mouse_Back_Zipper_Green_Valve",
+    detail: "背面中轴拉链、后背缝线和绿色圆形鼓风阀必须按背视图归位；正面镜头不可把绿色阀门或背部拉链挪到腹部或胸口。",
+    confidence: 0.94,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "mouse-human-envelope",
+    label: "灰鼠人体穿戴比例 / 柔软褶皱",
+    code: "Mouse_Human_Scale_Soft_Envelope",
+    detail: "保持真人穿戴的中低充气体型：浅灰外壳只比人体略宽，腰胯、分腿、脚套和布料褶皱清楚；不能变成巨大圆头老鼠、毛绒玩具、真实动物、圆柱气球或过度饱满吉祥物。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "mouse-view-topology",
+    label: "灰鼠视角拓扑 / 组件归位",
+    code: "Mouse_View_Topology_Placement",
+    detail: "正面拥有脸、米色腹部和正面轮廓；侧面显示厚度、尾巴边缘和侧身结构；背面拥有拉链、绿色阀门和尾巴根部。看不见的组件隐藏，不能为了展示而挪位。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+];
+
+const FROG_INFLATABLE_LOCK_NODES: LockNode[] = [
+  {
+    id: "frog-face-window-eyes",
+    label: "青蛙脸部 / 小脸窗 / 顶部凸眼",
+    code: "Frog_Face_Window_Raised_Eyes",
+    detail: "保留绿色青蛙头、顶部两只凸起蛙眼、米色脸部区域、小号人脸窗口和黑色嘴部横带；脸窗不能变成大透明罩，嘴不能变成牙齿、笑脸或真实青蛙嘴。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "frog-scarf-belly-spots",
+    label: "蓝色围巾 / 米色腹部 / 黑色斑点",
+    code: "Frog_Blue_Scarf_Cream_Belly_Black_Spots",
+    detail: "必须保留颈部蓝色围巾、正面米色腹部、绿色外壳上的黑色斑点和斑点密度；不能改成纯绿青蛙、其他围巾颜色、统一圆点或重新设计图案。",
+    confidence: 0.95,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "frog-webbed-limbs",
+    label: "蛙手蛙脚 / 分腿比例",
+    code: "Frog_Webbed_Hands_Feet",
+    detail: "保留青蛙手部和脚部的蹼状造型、宽松裤腿和脚套落地关系；不能变成人手、人鞋、细腿、真实蛙四足姿态或额外肢体。",
+    confidence: 0.92,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "frog-back-zipper-valve",
+    label: "背部黑色脊线 / 拉链 / 橙色阀门",
+    code: "Frog_Back_Spine_Zipper_Orange_Valve",
+    detail: "背面必须保留黑色脊柱式图案、背部拉链/竖缝、围巾后摆和橙色鼓风阀；这些后背结构只在背面或物理可见侧出现，不能挪到正面腹部。",
+    confidence: 0.95,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "frog-human-envelope",
+    label: "青蛙人体穿戴体型 / 不过度鼓胀",
+    code: "Frog_Human_Scale_Envelope",
+    detail: "保持真人穿戴的中低充气比例：身体圆润但仍有人体站姿、腰胯和分腿，不得膨胀成巨大圆形青蛙头、展示气模、毛绒玩偶或真实动物。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "frog-view-topology",
+    label: "青蛙视角拓扑 / 组件归位",
+    code: "Frog_View_Topology_Placement",
+    detail: "正面显示脸窗、米色腹部、蓝围巾和蛙脚；侧面显示斑点、侧厚度和手脚；背面显示黑色脊线、拉链、阀门和围巾后摆。不可混贴到同一个面。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+];
+
+const SUMO_INFLATABLE_LOCK_NODES: LockNode[] = [
+  {
+    id: "sumo-front-body-belt",
+    label: "相扑正面身体 / 黑色腰带兜裆",
+    code: "Sumo_Front_Body_Mawashi",
+    detail: "保留米肉色充气身体、黑色腰带/相扑兜裆、正面黑色垂片、简单胸部线条和肚脐点；不能改成武士服、胖娃娃、普通肌肉人或重新设计的衣服。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "sumo-head-cap",
+    label: "头部 / 黑色发髻帽",
+    code: "Sumo_Head_Black_Cap",
+    detail: "保留圆润头部和顶部黑色发髻/帽状结构，头脸简化为产品图的卡通相扑样式；不能新增真实五官、头发、头盔、胡须或复杂表情。",
+    confidence: 0.9,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "sumo-side-t-silhouette",
+    label: "侧面宽 T 形 / 腰带系结",
+    code: "Sumo_Side_T_Silhouette_Belt_Ties",
+    detail: "侧面必须保持宽 T 形充气轮廓、张开的短臂、侧向厚度和黑色腰带侧边系结；不能变瘦、变成长袍、变成球形胖人或丢失侧面腰带结构。",
+    confidence: 0.94,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "sumo-back-zipper-valve",
+    label: "背部拉链 / 橙色阀门",
+    code: "Sumo_Back_Zipper_Orange_Valve",
+    detail: "背面必须保留中轴拉链/竖缝、黑色后腰带/后兜裆和橙色圆形鼓风阀；橙色阀门不能被移到正面肚子或胸口，拉链不能出现在正面。",
+    confidence: 0.96,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "sumo-human-envelope",
+    label: "相扑人体穿戴比例 / 低中充气",
+    code: "Sumo_Human_Scale_Envelope",
+    detail: "保持真人穿戴的中低充气外壳：身体比人体宽但仍可见站姿、分腿、脚部落地和软布褶皱；不能鼓成巨大展示气球、真实相扑选手、毛绒玩具或全圆桶体。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "sumo-view-topology",
+    label: "相扑视角拓扑 / 组件归位",
+    code: "Sumo_View_Topology_Placement",
+    detail: "正面拥有黑色腰带兜裆、胸线和肚脐；侧面拥有厚度、T 形手臂和腰带系结；背面拥有拉链、橙色阀门和后腰带。看不见的结构隐藏，不挪位。",
+    confidence: 0.97,
+    critical: true,
+    confirmed: true,
+  },
+];
+
+const GENERIC_INFLATABLE_LOCK_NODES: LockNode[] = [
+  {
+    id: "generic-shape-envelope",
+    label: "人体穿戴体型 / 充气体积",
+    code: "Generic_Human_Scale_Envelope",
+    detail: "锁定上传四视图共同的人体穿戴尺度、头身比例、肩宽、腰胯、分腿和脚部落地关系；不能变成巨大吉祥物、展示气球、真实动物或重新设计的角色。",
+    confidence: 0.92,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "generic-component-placement",
+    label: "组件位置 / 视角归位",
+    code: "Generic_Component_Placement",
+    detail: "每个可见组件、图案、阀门、拉链、尾部、脸部或装饰只能留在四视图定义的位置；看不见的结构自然隐藏，不能为了展示挪到错误表面。",
+    confidence: 0.92,
+    critical: true,
+    confirmed: true,
+  },
+  {
+    id: "generic-material-fabric",
+    label: "材质褶皱 / 色块边界",
+    code: "Generic_Material_Color_Boundary",
+    detail: "保留充气尼龙材质、褶皱、缝线、色块边界和局部细节密度；不能抹平成塑料、毛绒、真实皮毛或干净 CGI 角色。",
+    confidence: 0.88,
+    critical: true,
+    confirmed: true,
+  },
+];
+
+function getAirHardwareMaterialLockNodes(productType: string): LockNode[] {
+  const productHardwareDetail =
+    productType === SHARK_INFLATABLE_TYPE
+      ? "鲨鱼橙色鼓风阀/进气口/出气口/泵口只能位于阀门侧腰侧面，保留橙色环、圆形网格/盖帽、参考高度和方向；正面看不见时自然隐藏，不能挪到白肚、透明脸窗、正面拉链、尾鳍或鳃线。"
+      : productType === BULL_INFLATABLE_TYPE
+        ? "奶牛橙色鼓风阀/进气口/出气口/泵口只能位于右后侧/背侧，和背部中轴拉链、白尾黑尖保持正确相对位置；不能挪到粉色乳房、白肚、鼻口或脸部。"
+        : productType === GRAY_MOUSE_INFLATABLE_TYPE
+          ? "灰鼠绿色鼓风阀/进气口/出气口/泵口只能位于后背/背侧，和背部中轴拉链、米黄尾巴根部保持正确相对位置；不能挪到米色腹部、鼻嘴、耳朵或手臂。"
+          : productType === FROG_INFLATABLE_TYPE
+            ? "青蛙橙色鼓风阀/进气口/出气口/泵口只能位于背部黑色脊线/拉链附近的后背面；不能挪到米色腹部、蓝围巾、脸窗、嘴带、手脚或斑点上。"
+            : productType === SUMO_INFLATABLE_TYPE
+              ? "相扑橙色鼓风阀/进气口/出气口/泵口只能位于背面/后侧，并按后阀辅助图保留与后腰带、拉链、米肉色背面褶皱的间距；不能挪到正面肚子、胸线、肚脐或兜裆布。"
+              : "阀门、鼓风阀、进气口、出气口、泵口、充放气口、风扇网格、盖帽和拉链只能按四视图定义的表面、数量、颜色、尺寸和高度归位。";
+
+  return [
+    {
+      id: "air-hardware-placement",
+      label: "进出气口 / 泵口 / 鼓风阀归位",
+      code: "Air_Hardware_Pump_Port_Placement",
+      detail: `${productHardwareDetail} 阀门/泵口是实体硬件，不是装饰；不能新增、复制、换色、缩放、简化、遮挡或为了让它可见而挪位。`,
+      confidence: 0.99,
+      critical: true,
+      confirmed: true,
+    },
+    {
+      id: "inflatable-material-details",
+      label: "薄尼龙材质 / 褶皱 / 拉链齿",
+      code: "Inflatable_Material_Wrinkle_Zipper_Detail",
+      detail: "保留薄尼龙/PVC 充气布料质感、局部松弛、压力褶皱、缝线、色块边缘针脚、拉链齿、阀门环和网格/盖帽细节；不能抹平成光滑塑料、橡胶玩具、毛绒、真实皮毛、真人皮肤或干净 CGI 吉祥物外壳。",
+      confidence: 0.98,
+      critical: true,
+      confirmed: true,
+    },
+  ];
+}
+
+const initialNodes = SHARK_INFLATABLE_LOCK_NODES;
+
+const productPresets: readonly ProductPreset[] = [
+  {
+    productType: SHARK_INFLATABLE_TYPE,
+    views: SHARK_INFLATABLE_PRESET_VIEWS,
+    supportViews: [],
+    referenceVideos: SHARK_INFLATABLE_REFERENCE_VIDEOS,
+    lockNodes: SHARK_INFLATABLE_LOCK_NODES,
+  },
+  {
+    productType: BULL_INFLATABLE_TYPE,
+    views: BULL_INFLATABLE_PRESET_VIEWS,
+    supportViews: [],
+    referenceVideos: BULL_INFLATABLE_REFERENCE_VIDEOS,
+    lockNodes: BULL_INFLATABLE_LOCK_NODES,
+  },
+  {
+    productType: GRAY_MOUSE_INFLATABLE_TYPE,
+    views: GRAY_MOUSE_INFLATABLE_PRESET_VIEWS,
+    supportViews: [],
+    referenceVideos: GRAY_MOUSE_INFLATABLE_REFERENCE_VIDEOS,
+    lockNodes: GRAY_MOUSE_INFLATABLE_LOCK_NODES,
+  },
+  {
+    productType: FROG_INFLATABLE_TYPE,
+    views: FROG_INFLATABLE_PRESET_VIEWS,
+    supportViews: FROG_INFLATABLE_SUPPORT_VIEWS,
+    referenceVideos: FROG_INFLATABLE_REFERENCE_VIDEOS,
+    lockNodes: FROG_INFLATABLE_LOCK_NODES,
+  },
+  {
+    productType: SUMO_INFLATABLE_TYPE,
+    views: SUMO_INFLATABLE_PRESET_VIEWS,
+    supportViews: SUMO_INFLATABLE_SUPPORT_VIEWS,
+    referenceVideos: SUMO_INFLATABLE_REFERENCE_VIDEOS,
+    lockNodes: SUMO_INFLATABLE_LOCK_NODES,
+  },
+] as const;
+
+function getProductPreset(productType: string) {
+  return productPresets.find((preset) => preset.productType === productType);
+}
+
+function cloneLockNodes(nodes: readonly LockNode[]) {
+  return nodes.map((node) => ({ ...node }));
+}
+
+function getProductLockNodes(productType: string) {
+  const preset = getProductPreset(productType);
+  return cloneLockNodes([...(preset?.lockNodes || GENERIC_INFLATABLE_LOCK_NODES), ...getAirHardwareMaterialLockNodes(productType)]);
+}
+
+function createPresetSlots(productType: string): UploadSlot[] {
+  const preset = getProductPreset(productType);
+  if (!preset) return initialSlots;
+  return initialSlots.map((slot) => {
+    const view = preset.views.find((item) => item.slotId === slot.id);
+    return view
+      ? { ...slot, fileName: view.fileName, localUrl: view.localUrl, dataUrl: "", source: "preset" }
+      : slot;
+  });
+}
+
+function createDefaultScenePrompt(productType: string) {
+  if (productType === BULL_INFLATABLE_TYPE) {
+    return "明亮商场或超市通道，真人穿着上传四视图中的奶牛充气服，正面或轻微正面三分之二站立展示，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的 155-190cm 真人穿戴尺度、黑白斑、双角、粉色鼻口、粉色乳房、蹄套和轻到中度充气体型；橙色鼓风阀/进出气口/泵口只属于右后侧/背侧，背部拉链和白尾黑尖按背视图归位，看不见时自然隐藏；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
+  }
+  if (productType === SHARK_INFLATABLE_TYPE) {
+    return "明亮超市海鲜区，真人穿着上传四视图中的鲨鱼充气服，正面或轻微正面三分之二站在冰鲜鱼柜旁，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度：小号浅弧形横向梯形透明脸窗、偏青的柔和蓝色尼龙、偏扁偏软略微蔫皱的轻度欠充气体型，不能变成大矩形脸窗、高饱和亮蓝或圆鼓鼓的气模；橙色鼓风阀/进出气口/泵口只属于阀门侧腰，正面看不见时自然隐藏，不能挪到白肚、脸窗、拉链或尾鳍；保留薄尼龙/PVC 褶皱、缝线、拉链齿、阀门环和网格细节。";
+  }
+  if (productType === GRAY_MOUSE_INFLATABLE_TYPE) {
+    return "明亮便利店零食货架前，真人穿着四视图中的灰色老鼠充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像拿起奶酪味薯片时突然被价签吸引，露出无辜又好奇的表情。场景可以有趣，但灰色老鼠头脸、米色腹部、圆耳、突出鼻嘴、侧后方尾巴和真人穿戴的中低充气体型必须保持参考图；绿色鼓风阀/进出气口/泵口只属于后背/背侧，和背部拉链、尾巴根部保持位置关系，不能挪到腹部或脸部；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
+  }
+  if (productType === FROG_INFLATABLE_TYPE) {
+    return "明亮室内派对或办公室茶水间，真人穿着四视图中的青蛙充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像认真准备宣布下班却突然愣住。场景可以有梗，也可以有手持道具，但顶部凸眼、小号脸窗、大块黑色弧形嘴带、蓝色围巾、米色腹部、黑色斑点、蹼状手脚、可见鞋子和中低充气人体比例必须保持参考图；手持道具只能作为外部剧情道具，不能遮挡或替代脸窗、嘴带、围巾、蹼手、鞋子、阀门、拉链或身体轮廓；橙色鼓风阀/进出气口/泵口只属于后背黑色脊线/拉链附近，不能挪到腹部、围巾、脸窗或嘴带；保留薄尼龙/PVC 褶皱、缝线、拉链齿、阀门环和围巾边缘细节。";
+  }
+  if (productType === SUMO_INFLATABLE_TYPE) {
+    return "明亮办公室走廊或电梯口，真人穿着四视图中的相扑充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像严肃准备和自动门进行一场相扑对决。场景可以恶搞，但米肉色身体、黑色腰带兜裆、顶部黑色发髻帽、胸线、肚脐、侧面宽 T 形和中低充气人体比例必须保持参考图；橙色鼓风阀/进出气口/泵口只属于背面/后侧，参考后阀辅助图保持与后腰带、拉链的间距，不能挪到正面肚子或兜裆布；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
+  }
+  return `明亮电商短视频场景，真人穿着上传四视图中的${productType || "当前充气产品"}，正面或轻微正面三分之二站立展示，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度、尺寸比例、组件位置和轻到中度充气体型；阀门、鼓风阀、进出气口、泵口、拉链、缝线和布料褶皱必须按四视图归位，看不见时隐藏，不能挪位、复制、换色或简化。`;
+}
+
+function createDefaultVideoActionPrompt(productType: string) {
+  if (productType === BULL_INFLATABLE_TYPE) {
+    return "从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍或产品美化；人物保持首帧姿态、已有道具接触、可见真人手/鞋和原地站位，只做很小的左右重心晃动和一次轻微蹄套抬手；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的手脚、脸部、阀门、拉链、尾巴、色块和身体轮廓；镜头稳定、无旋转、无变焦、无大步行走，奶牛充气服的 155-190cm 人体体型包络、黑白斑、双角、耳朵、粉色鼻口、粉色乳房、黑色蹄套全程不变；背部拉链、右后侧橙色鼓风阀/进出气口/泵口和尾巴只在物理可见时按背视图归位，不可挪到正面；薄尼龙/PVC 褶皱、缝线和拉链齿不漂移。";
+  }
+  if (productType === SHARK_INFLATABLE_TYPE) {
+    return "从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍或产品美化；人物保持首帧姿态、已有道具接触、可见真人手/鞋和原地站位，只做很小的左右重心晃动和一次轻微手鳍抬起；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的手鳍、脸窗、拉链、阀门、尾鳍、鞋子、颜色和偏扁身体轮廓；镜头稳定、无旋转、无变焦、无大步行走，产品尺寸、人体体型包络、小号浅弧形横向梯形脸窗、柔和偏青蓝色、偏扁偏软的轻度欠充气体积和正面拉链全程不变；橙色鼓风阀/进出气口/泵口只在阀门侧腰物理可见时出现，尾鳍只属于背部；薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环不漂移。";
+  }
+  if (productType === GRAY_MOUSE_INFLATABLE_TYPE) {
+    return "从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍、双手重排抱袋或产品美化；灰色老鼠充气服保持原视角、原地站位、首帧手臂姿势、已有道具接触、可见真人手/鞋：如果首帧是一只手拿零食袋、另一只手伸向货架，就只做伸向货架的那只手极小幅停顿或轻抖，拿袋的手和袋子位置关系不变；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的鼻嘴、耳朵、腹部、手、鞋、尾巴、阀门、拉链和身体轮廓，不能把空手改成双手重排抱袋；镜头稳定、无大步行走、无转身，圆耳、米色腹部、突出鼻嘴、尾巴、可见真人手/鞋和真人穿戴体型全程不漂移；后背绿色鼓风阀/进出气口/泵口和背部拉链只在物理可见时按背视图归位，不可挪到腹部或脸部；薄尼龙/PVC 褶皱、缝线和拉链齿稳定。";
+  }
+  if (productType === FROG_INFLATABLE_TYPE) {
+    return "从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍或产品美化；青蛙充气服保持原视角、首帧手臂姿势、已有道具接触、可见真人手/鞋和原地站位，只做轻微弹跳感晃动、一个极小蹼手停顿，然后看镜头；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的顶部凸眼、小号脸窗、大块黑色弧形嘴带、蓝围巾、蹼手、鞋子、阀门、拉链和身体轮廓；镜头稳定、无转身，顶部凸眼、小号脸窗、大块黑色弧形嘴带、蓝围巾、米色腹部、黑斑、蹼状手脚和可见鞋子全程不变；后背橙色鼓风阀/进出气口/泵口、黑色脊线和拉链只在物理可见时归位，不可挪到腹部、围巾或脸窗；薄尼龙/PVC 褶皱和缝线稳定。";
+  }
+  if (productType === SUMO_INFLATABLE_TYPE) {
+    return "从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍或产品美化；相扑充气服保持原视角、首帧手臂姿势、已有道具接触、可见真人手/鞋和原地站位，只做一次很小幅下蹲蓄力和轻微回弹；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的腰带兜裆、发髻帽、肚脐、手、鞋、阀门、拉链和身体轮廓；镜头稳定、无转身、无快速跳舞，黑色腰带兜裆、发髻帽、肚脐、侧面宽度和中低充气体型全程不变；背面橙色鼓风阀/进出气口/泵口、后腰带和拉链只在物理可见时按后阀辅助图归位，不可挪到正面肚子；薄尼龙/PVC 褶皱和缝线稳定。";
+  }
+  return `从已确认首帧开始，首帧就是像素级身份锚点，不允许高清重绘、质量提升式重绘、重新摆拍或产品美化；人物保持首帧姿态、已有道具接触、可见真人手/鞋和原地站位，只做很小的左右重心晃动和一次轻微抬手；允许为了动作和喜剧效果出现手持道具，但道具只能作为外部剧情道具，不能遮挡、替代或改写产品的手脚、脸部、阀门、拉链、尾部、色块和身体轮廓；镜头稳定、无旋转、无变焦、无大步行走，${productType || "当前产品"}的尺寸、人体体型包络、外形轮廓、组件位置和材质细节全程不变；阀门、鼓风阀、进出气口、泵口、拉链和缝线只按物理可见角度出现，不可挪位、复制、换色或遮挡。`;
+}
 
 const firstFrameReviewChecks = [
   {
@@ -209,20 +679,26 @@ const firstFrameReviewChecks = [
   },
   {
     id: "front-window-zipper",
-    label: "正面脸窗和拉链归位",
-    detail: "透明脸窗、白肚、垂直拉链只属于正面，不挪到侧面。",
+    label: "正面核心组件归位",
+    detail: "正面图定义的脸部、窗口、图案、拉链、乳房或其他核心组件只属于正面，不挪到侧面或背面。",
     critical: true,
   },
   {
     id: "valve-tail-visibility",
-    label: "阀门 / 尾鳍按视角可见",
-    detail: "侧阀和背尾只在物理可见时出现；不可为了展示而挪位。",
+    label: "侧面 / 背面组件按视角可见",
+    detail: "阀门、尾部、背部拉链、侧面图案和侧边结构只在物理可见时出现；不可为了展示而挪位。",
+    critical: true,
+  },
+  {
+    id: "air-hardware-material",
+    label: "进出气口泵口 / 材质细节正确",
+    detail: "阀门、鼓风阀、进气口、出气口、泵口、充放气口、风扇网格、盖帽必须按四视图的颜色、数量、尺寸、高度和侧/背归属出现；薄尼龙/PVC 褶皱、缝线、拉链齿、色块针脚和阀门环必须清楚，不能变成光滑塑料、毛绒或 CGI 外壳。",
     critical: true,
   },
   {
     id: "no-invented-parts",
     label: "没有新增或丢失结构",
-    detail: "无新嘴、牙齿、额外鳍、额外手臂、错位阀门或错位尾鳍。",
+    detail: "无新增表情、额外肢体、额外装饰、错位阀门、错位尾部、缺失脸部、缺失斑块或缺失关键组件。",
     critical: true,
   },
 ] as const;
@@ -238,15 +714,19 @@ function createFirstFrameReviewState(): FirstFrameReviewState {
 }
 
 const defaultApiSettings: ApiSettings = {
-  imageBaseUrl: "https://testvideo.site/v1",
   imagePath: "",
-  imageApiKey: "",
   imageModel: "gpt-image-2",
-  videoBaseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+  videoBaseUrl: "https://ai.wisech.com/v1",
   videoPath: "",
   videoApiKey: "",
-  videoModel: "happyhorse-1.0-i2v",
+  videoModel: "doubao-seedance-2-0-fast-260128",
+  promptModel: "gpt-4.1-mini",
 };
+
+const VIDEO_MODEL_OPTIONS = [
+  "doubao-seedance-2-0-fast-260128",
+  "doubao-seedance-1-5-pro-251215",
+] as const;
 
 const productAssetPlan: ProductAsset[] = [
   {
@@ -255,7 +735,53 @@ const productAssetPlan: ProductAsset[] = [
     type: "充气服",
     viewMode: "四视图",
     viewUrls: SHARK_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
-    lockedNodeCodes: initialNodes.map((node) => node.code),
+    supportViewUrls: [],
+    referenceVideoUrls: SHARK_INFLATABLE_REFERENCE_VIDEOS.map((video) => video.localUrl),
+    lockedNodeCodes: getProductLockNodes(SHARK_INFLATABLE_TYPE).map((node) => node.code),
+    updatedAt: "本地预设",
+  },
+  {
+    id: "PRODUCT_BULL_001",
+    name: "奶牛充气服",
+    type: "充气服",
+    viewMode: "四视图",
+    viewUrls: BULL_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
+    supportViewUrls: [],
+    referenceVideoUrls: BULL_INFLATABLE_REFERENCE_VIDEOS.map((video) => video.localUrl),
+    lockedNodeCodes: getProductLockNodes(BULL_INFLATABLE_TYPE).map((node) => node.code),
+    updatedAt: "本地预设",
+  },
+  {
+    id: "PRODUCT_GRAY_MOUSE_001",
+    name: "灰色老鼠充气服",
+    type: "充气服",
+    viewMode: "四视图",
+    viewUrls: GRAY_MOUSE_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
+    supportViewUrls: [],
+    referenceVideoUrls: GRAY_MOUSE_INFLATABLE_REFERENCE_VIDEOS.map((video) => video.localUrl),
+    lockedNodeCodes: getProductLockNodes(GRAY_MOUSE_INFLATABLE_TYPE).map((node) => node.code),
+    updatedAt: "本地预设",
+  },
+  {
+    id: "PRODUCT_FROG_001",
+    name: "青蛙充气服",
+    type: "充气服",
+    viewMode: "四视图",
+    viewUrls: FROG_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
+    supportViewUrls: FROG_INFLATABLE_SUPPORT_VIEWS.map((view) => view.localUrl),
+    referenceVideoUrls: FROG_INFLATABLE_REFERENCE_VIDEOS.map((video) => video.localUrl),
+    lockedNodeCodes: getProductLockNodes(FROG_INFLATABLE_TYPE).map((node) => node.code),
+    updatedAt: "本地预设",
+  },
+  {
+    id: "PRODUCT_SUMO_001",
+    name: "相扑充气服",
+    type: "充气服",
+    viewMode: "四视图",
+    viewUrls: SUMO_INFLATABLE_PRESET_VIEWS.map((view) => view.localUrl),
+    supportViewUrls: SUMO_INFLATABLE_SUPPORT_VIEWS.map((view) => view.localUrl),
+    referenceVideoUrls: SUMO_INFLATABLE_REFERENCE_VIDEOS.map((video) => video.localUrl),
+    lockedNodeCodes: getProductLockNodes(SUMO_INFLATABLE_TYPE).map((node) => node.code),
     updatedAt: "本地预设",
   },
 ];
@@ -269,14 +795,26 @@ function loadApiSettings(): ApiSettings {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (!saved) return defaultApiSettings;
-    const merged = { ...defaultApiSettings, ...(JSON.parse(saved) as Partial<ApiSettings>) };
+    const parsed = JSON.parse(saved) as Partial<ApiSettings> & { imageBaseUrl?: unknown; imageApiKey?: unknown };
+    delete parsed.imageBaseUrl;
+    delete parsed.imageApiKey;
+    const merged = { ...defaultApiSettings, ...parsed };
     if (merged.imagePath === "/images/generations") merged.imagePath = "";
     if (merged.videoPath === "/videos/generations") merged.videoPath = "";
-    if (merged.videoBaseUrl.replace(/\/+$/, "") === "https://dashscope.aliyuncs.com/api/v1") {
+    const normalizedVideoBaseUrl = typeof merged.videoBaseUrl === "string" ? merged.videoBaseUrl.replace(/\/+$/, "") : "";
+    if (
+      !normalizedVideoBaseUrl ||
+      normalizedVideoBaseUrl === "https://dashscope.aliyuncs.com/api/v1" ||
+      normalizedVideoBaseUrl === "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis"
+    ) {
       merged.videoBaseUrl = defaultApiSettings.videoBaseUrl;
     }
-    if (merged.videoModel === "happyhorse-1.0-t2v") {
-      merged.videoModel = "happyhorse-1.0-i2v";
+    const videoModelText = typeof merged.videoModel === "string" ? merged.videoModel : "";
+    if (!videoModelText || videoModelText.startsWith("happyhorse-1.0")) {
+      merged.videoModel = defaultApiSettings.videoModel;
+    }
+    if (merged.videoBaseUrl === defaultApiSettings.videoBaseUrl && merged.videoModel === defaultApiSettings.videoModel) {
+      merged.videoApiKey = "";
     }
     return merged;
   } catch {
@@ -423,6 +961,21 @@ async function loadPresetSlotDataUrls(preset: NonNullable<ReturnType<typeof getP
   );
 }
 
+async function loadPresetSupportDataUrls(preset: NonNullable<ReturnType<typeof getProductPreset>>) {
+  const loaded = await Promise.all(
+    (preset.supportViews || []).map(async (view) => {
+      try {
+        const response = await fetch(view.localUrl);
+        if (!response.ok) return "";
+        return readBlobAsDataUrl(await response.blob());
+      } catch {
+        return "";
+      }
+    }),
+  );
+  return loaded.filter(Boolean);
+}
+
 function getSlotImageUrl(slot?: UploadSlot) {
   if (!slot) return "";
   return slot.dataUrl || "";
@@ -431,8 +984,8 @@ function getSlotImageUrl(slot?: UploadSlot) {
 export function App() {
   const [activeStep, setActiveStep] = useState<StepId>("upload");
   const [slots, setSlots] = useState(() => createPresetSlots(SHARK_INFLATABLE_TYPE));
-  const [detailSlots, setDetailSlots] = useState(initialDetailSlots);
-  const [lockNodes, setLockNodes] = useState(initialNodes);
+  const [supportImageUrls, setSupportImageUrls] = useState<string[]>([]);
+  const [lockNodes, setLockNodes] = useState(() => getProductLockNodes(SHARK_INFLATABLE_TYPE));
   const [costumeType, setCostumeType] = useState(SHARK_INFLATABLE_TYPE);
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -445,12 +998,8 @@ export function App() {
   const [duration, setDuration] = useState(8);
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [motionMode, setMotionMode] = useState<MotionMode>("strict");
-  const [scenePrompt, setScenePrompt] = useState(
-    "明亮超市海鲜区，真人穿着上传四视图中的鲨鱼充气服，正面或轻微正面三分之二站在冰鲜鱼柜旁，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度和轻到中度充气体型。",
-  );
-  const [videoActionPrompt, setVideoActionPrompt] = useState(
-    "从已确认首帧开始，人物保持正面姿态和原地站位，只做很小的左右重心晃动和一次轻微手鳍抬起；镜头稳定、无旋转、无变焦、无大步行走，产品尺寸、人体体型包络、脸窗、拉链、阀门、尾鳍位置全程不变。",
-  );
+  const [scenePrompt, setScenePrompt] = useState(() => createDefaultScenePrompt(SHARK_INFLATABLE_TYPE));
+  const [videoActionPrompt, setVideoActionPrompt] = useState(() => createDefaultVideoActionPrompt(SHARK_INFLATABLE_TYPE));
   const [approvedFirstFrameUrl, setApprovedFirstFrameUrl] = useState("");
   const [firstFrameApproved, setFirstFrameApproved] = useState(false);
   const [firstFrameReviewState, setFirstFrameReviewState] = useState<FirstFrameReviewState>(() => createFirstFrameReviewState());
@@ -461,6 +1010,7 @@ export function App() {
   const [videoUrl, setVideoUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testing, setTesting] = useState<"image" | "video" | "">("");
+  const [suggestingPrompt, setSuggestingPrompt] = useState<"firstFrame" | "video" | "">("");
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(apiSettings));
@@ -471,17 +1021,19 @@ export function App() {
     if (!preset) {
       invalidateGeneratedOutputs();
       setSlots(initialSlots);
-      setDetailSlots(initialDetailSlots);
+      setSupportImageUrls([]);
+      setLockNodes(getProductLockNodes(costumeType));
       setActiveStep("upload");
       return;
     }
     let cancelled = false;
     invalidateGeneratedOutputs();
     setSlots(createPresetSlots(costumeType));
-    setDetailSlots(initialDetailSlots);
+    setSupportImageUrls([]);
+    setLockNodes(getProductLockNodes(costumeType));
     setActiveStep("upload");
-    loadPresetSlotDataUrls(preset)
-      .then((loadedSlots) => {
+    Promise.all([loadPresetSlotDataUrls(preset), loadPresetSupportDataUrls(preset)])
+      .then(([loadedSlots, loadedSupportImages]) => {
         if (cancelled) return;
         setSlots((current) =>
           current.map((slot) => {
@@ -490,6 +1042,7 @@ export function App() {
             return loaded ? { ...slot, dataUrl: loaded.dataUrl } : slot;
           }),
         );
+        setSupportImageUrls(loadedSupportImages);
       })
       .catch((error) => {
         if (!cancelled) setFirstFrameError(error instanceof Error ? error.message : "Preset images failed to load.");
@@ -507,7 +1060,9 @@ export function App() {
     (check) => !ALL_CRITICAL_FIRST_FRAME_CHECKS_REQUIRED || !check.critical || firstFrameReviewState[check.id] === "pass",
   ) && !hasFailedFirstFrameReviewChecks;
   const requiredUrls = slots.map(getSlotImageUrl).filter(Boolean);
-  const detailUrls = detailSlots.map(getSlotImageUrl).filter(Boolean);
+  const currentProductPreset = getProductPreset(costumeType);
+  const currentReferenceVideos = currentProductPreset?.referenceVideos || [];
+  const currentSupportViewCount = currentProductPreset?.supportViews?.length || 0;
   const uploadReady = requiredUrls.length === slots.length;
   const firstFrameReady = uploadReady && allLocksConfirmed;
   const videoReady = firstFrameReady && Boolean(approvedFirstFrameUrl.trim()) && firstFrameApproved;
@@ -527,13 +1082,11 @@ export function App() {
         : "More playful motion, but still preserve every locked product node.";
 
   const firstFramePayload = {
-    base_url: apiSettings.imageBaseUrl,
-    api_key: apiSettings.imageApiKey,
     model: apiSettings.imageModel,
     scene_prompt: scenePrompt,
     product_type: costumeType,
     image_urls: requiredUrls,
-    detail_image_urls: detailUrls,
+    support_image_urls: supportImageUrls,
     locked_nodes: lockNodes.map(({ code, label, detail, confidence, confirmed }) => ({
       code,
       label,
@@ -552,7 +1105,7 @@ export function App() {
     scene_prompt: scenePrompt,
     product_type: costumeType,
     image_urls: requiredUrls,
-    detail_image_urls: detailUrls,
+    support_image_urls: supportImageUrls,
     locked_nodes: lockNodes.map(({ code, label, detail, confidence, confirmed }) => ({
       code,
       label,
@@ -585,6 +1138,10 @@ export function App() {
     setFirstFrameApproved(false);
     setFirstFrameReviewState(createFirstFrameReviewState());
     setFirstFrameError("");
+    invalidateVideoOutputs();
+  }
+
+  function invalidateVideoOutputs() {
     setVideoError("");
     setVideoTaskId("");
     setVideoStatus("idle");
@@ -599,11 +1156,9 @@ export function App() {
     const updateSlot = (slot: UploadSlot): UploadSlot =>
       slot.id === id ? { ...slot, file, fileName: file.name, localUrl, dataUrl: "", source: "manual" } : slot;
     setSlots((current) => current.map(updateSlot));
-    setDetailSlots((current) => current.map(updateSlot));
     const dataUrl = await readFileAsDataUrl(file);
     const updateDataUrl = (slot: UploadSlot) => (slot.id === id ? { ...slot, dataUrl } : slot);
     setSlots((current) => current.map(updateDataUrl));
-    setDetailSlots((current) => current.map(updateDataUrl));
   }
 
   function updateApiSettings(patch: Partial<ApiSettings>) {
@@ -613,12 +1168,20 @@ export function App() {
   function updateProductType(value: string) {
     invalidateGeneratedOutputs();
     setCostumeType(value);
+    setLockNodes(getProductLockNodes(value));
+    setScenePrompt(createDefaultScenePrompt(value));
+    setVideoActionPrompt(createDefaultVideoActionPrompt(value));
     setActiveStep("upload");
   }
 
   function updateScenePrompt(value: string) {
     invalidateGeneratedOutputs();
     setScenePrompt(value);
+  }
+
+  function updateVideoActionPrompt(value: string) {
+    invalidateVideoOutputs();
+    setVideoActionPrompt(value);
   }
 
   function updateAspectRatio(value: string) {
@@ -628,9 +1191,58 @@ export function App() {
     if (activeStep !== "upload") setActiveStep("firstFrame");
   }
 
+  async function requestPromptSuggestion(kind: "firstFrame" | "video") {
+    setSuggestingPrompt(kind);
+    setFirstFrameError("");
+    setVideoError("");
+    try {
+      const response = await fetch("/api/prompt-suggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: apiSettings.promptModel,
+          kind,
+          product_type: costumeType,
+          current_prompt: kind === "firstFrame" ? scenePrompt : videoActionPrompt,
+          scene_prompt: scenePrompt,
+          reference_video_count: currentReferenceVideos.length,
+          support_image_count: currentSupportViewCount,
+          locked_nodes: lockNodes.map(({ code, label, detail, confidence, critical }) => ({
+            code,
+            label,
+            detail,
+            confidence,
+            critical,
+          })),
+        }),
+      });
+      const data: unknown = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(extractErrorMessage(data));
+      const nextPrompt =
+        data && typeof data === "object" && typeof (data as Record<string, unknown>).prompt === "string"
+          ? ((data as Record<string, unknown>).prompt as string).trim()
+          : "";
+      if (!nextPrompt) throw new Error("提示词接口已返回，但没有找到 prompt 文本。");
+      if (kind === "firstFrame") {
+        updateScenePrompt(nextPrompt);
+        setFirstFrameError("已生成首帧提示词。");
+      } else {
+        invalidateVideoOutputs();
+        setVideoActionPrompt(nextPrompt);
+        setVideoError("已生成视频提示词。");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "提示词生成失败";
+      if (kind === "firstFrame") setFirstFrameError(message);
+      if (kind === "video") setVideoError(message);
+    } finally {
+      setSuggestingPrompt("");
+    }
+  }
+
   function completeUploadStep() {
     if (!uploadReady) {
-      setFirstFrameError("请先上传正面、左侧、右侧、背面四张核心产品图。细节图可选补充，不影响进入首帧。");
+      setFirstFrameError("请先上传正面、左侧、右侧、背面四张核心产品图。");
       return;
     }
     setLockNodes(autoLockedNodes);
@@ -683,7 +1295,7 @@ export function App() {
       return;
     }
     if (!allFirstFrameReviewChecksPassed) {
-      setFirstFrameError("请先逐项确认首帧的尺寸体积、脸窗拉链、阀门尾鳍和新增结构检查。");
+      setFirstFrameError("请先逐项确认首帧的尺寸体积、脸窗拉链、阀门尾鳍、进出气口泵口、材质细节和新增结构检查。");
       return;
     }
     setFirstFrameApproved(true);
@@ -887,8 +1499,9 @@ export function App() {
           {activeStep === "upload" && (
             <UploadStep
               slots={slots}
-              detailSlots={detailSlots}
               costumeType={costumeType}
+              referenceVideos={currentReferenceVideos}
+              supportViewCount={currentSupportViewCount}
               setCostumeType={updateProductType}
               onFile={updateSlotFile}
               canComplete={uploadReady}
@@ -904,7 +1517,6 @@ export function App() {
               aspectRatio={aspectRatio}
               setAspectRatio={updateAspectRatio}
               productViews={slots}
-              detailViews={detailSlots}
               approvedUrl={approvedFirstFrameUrl}
               isApproved={firstFrameApproved}
               reviewChecks={firstFrameReviewChecks}
@@ -917,7 +1529,9 @@ export function App() {
               error={firstFrameError}
               canGenerate={firstFrameReady}
               isSubmitting={isSubmitting}
+              isSuggesting={suggestingPrompt === "firstFrame"}
               isTesting={testing === "image"}
+              onSuggestPrompt={() => requestPromptSuggestion("firstFrame")}
               onGenerate={() => callBackend("firstFrame")}
               onTest={() => testApi("image")}
               onNext={() => setActiveStep("video")}
@@ -926,7 +1540,7 @@ export function App() {
           {activeStep === "video" && (
             <VideoStep
               prompt={videoActionPrompt}
-              setPrompt={setVideoActionPrompt}
+              setPrompt={updateVideoActionPrompt}
               apiSettings={apiSettings}
               updateApiSettings={updateApiSettings}
               duration={duration}
@@ -935,6 +1549,7 @@ export function App() {
               setMotionMode={setMotionMode}
               canGenerate={videoReady}
               isSubmitting={isSubmitting}
+              isSuggesting={suggestingPrompt === "video"}
               isTesting={testing === "video"}
               error={videoError}
               aspectRatio={aspectRatio}
@@ -942,6 +1557,7 @@ export function App() {
               statusText={videoStatusText}
               taskId={videoTaskId}
               videoUrl={videoUrl}
+              onSuggestPrompt={() => requestPromptSuggestion("video")}
               onGenerate={() => callBackend("video")}
               onTest={() => testApi("video")}
             />
@@ -972,8 +1588,9 @@ export function App() {
 
 function UploadStep(props: {
   slots: UploadSlot[];
-  detailSlots: UploadSlot[];
   costumeType: string;
+  referenceVideos: readonly ProductReferenceVideo[];
+  supportViewCount: number;
   setCostumeType: (value: string) => void;
   onFile: (id: string, file?: File) => void;
   canComplete: boolean;
@@ -987,16 +1604,16 @@ function UploadStep(props: {
   return (
     <section className="stage-panel">
       <StageHeader eyebrow="第 1 步" title="上传产品四视图" />
-      <div className="lock-note">核心四视图上传后才进入首帧。正面、左侧、右侧、背面用于锁定尺寸、比例、外形和拓扑；细节图是可选补充，用来强化阀门、脸窗、拉链、缝线、褶皱等易漂移部位。</div>
+      <div className="lock-note">核心四视图上传后才进入首帧。正面、左侧、右侧、背面用于锁定尺寸、比例、外形和拓扑；选择本地预设产品时，已保存的辅助角度会在后台自动作为一致性证据进入模型。</div>
       <div className="field-grid">
         <label>
           产品类型
           <select value={props.costumeType} onChange={(event) => props.setCostumeType(event.target.value)}>
             <option>鲨鱼充气服</option>
+            <option>奶牛充气服</option>
+            <option>灰色老鼠充气服</option>
             <option>青蛙充气服</option>
-            <option>霸王龙充气服</option>
             <option>相扑充气服</option>
-            <option>狮子充气服</option>
             <option>通用充气服</option>
           </select>
         </label>
@@ -1033,37 +1650,20 @@ function UploadStep(props: {
           </article>
         ))}
       </div>
-      <div className="upload-section-title optional">
-        <strong>细节补充</strong>
-        <span>可选，不阻塞首帧生成</span>
-      </div>
-      <div className="detail-asset-grid">
-        {props.detailSlots.map((slot) => (
-          <article className="asset-card detail-card" key={slot.id}>
-            <label className="asset-preview">
-              <input type="file" accept={slot.accept} onChange={(event) => props.onFile(slot.id, event.target.files?.[0])} />
-              <div
-                className="drop-zone"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => handleDrop(slot.id, event)}
-              >
-                {slot.localUrl ? (
-                  <img src={slot.localUrl} alt={slot.label} />
-                ) : (
-                  <div className="missing-asset">
-                    <CloudUpload size={26} />
-                    <span>{slot.label}</span>
-                    <small>上传图片</small>
-                  </div>
-                )}
-                <em>{slot.badge}</em>
-              </div>
-            </label>
-            <strong>{slot.label}</strong>
-            <small>{slot.fileName || slot.hint}</small>
-          </article>
-        ))}
-      </div>
+      {props.referenceVideos.length > 0 && (
+        <div className="preset-reference-note">
+          <strong>已绑定参考视频</strong>
+          <span>
+            {props.referenceVideos.length} 个长期样片：{props.referenceVideos.map((video) => video.fileName).join("、")}
+          </span>
+        </div>
+      )}
+      {props.supportViewCount > 0 && (
+        <div className="preset-reference-note">
+          <strong>已绑定辅助角度</strong>
+          <span>{props.supportViewCount} 张本地辅助视角会随四视图一起进入模型，用来加固侧面和背面组件归位。</span>
+        </div>
+      )}
       <div className="upload-actions">
         <button className="primary-action" type="button" disabled={!props.canComplete} onClick={props.onComplete}>
           <Check size={16} />
@@ -1082,7 +1682,6 @@ function FirstFrameStep(props: {
   aspectRatio: string;
   setAspectRatio: (value: string) => void;
   productViews: UploadSlot[];
-  detailViews: UploadSlot[];
   approvedUrl: string;
   isApproved: boolean;
   reviewChecks: typeof firstFrameReviewChecks;
@@ -1095,7 +1694,9 @@ function FirstFrameStep(props: {
   error: string;
   canGenerate: boolean;
   isSubmitting: boolean;
+  isSuggesting: boolean;
   isTesting: boolean;
+  onSuggestPrompt: () => void;
   onGenerate: () => void;
   onTest: () => void;
   onNext: () => void;
@@ -1103,17 +1704,29 @@ function FirstFrameStep(props: {
   return (
     <section className="stage-panel">
       <StageHeader eyebrow="第 2 步" title="四视图合成首帧" />
-      <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意；细节图只补强局部材质和易漂移部位。人体体型包络、尺寸、比例、轮廓必须接近四视图，不能变成巨大圆顶、桶状身体、站立气球或吉祥物外壳；阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
+      <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意。人体体型包络、尺寸、比例、轮廓必须接近四视图，不能变成巨大圆顶、桶状身体、站立气球或吉祥物外壳；阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
       <div className="two-col">
         <div className="stack">
-          <label className="scenario-card">
-            低优先级场景描述
+          <div className="scenario-card prompt-card">
+            <div className="prompt-label-row">
+              <span>生成首帧提示词</span>
+              <button
+                className="dice-action"
+                type="button"
+                title="自动生成首帧提示词"
+                aria-label="自动生成首帧提示词"
+                disabled={props.isSuggesting}
+                onClick={props.onSuggestPrompt}
+              >
+                {props.isSuggesting ? <LoaderCircle className="spin" size={16} /> : <Dices size={17} />}
+              </button>
+            </div>
             <textarea
               value={props.prompt}
               onChange={(event) => props.setPrompt(event.target.value)}
               placeholder="只写场景和气氛，例如：超市海鲜区、办公室摸鱼、地铁通勤..."
             />
-          </label>
+          </div>
           <div className="first-frame-review">
             {props.productViews.map((slot) => (
               <div className="review-pane" key={slot.id}>
@@ -1131,16 +1744,6 @@ function FirstFrameStep(props: {
                 )}
               </div>
             ))}
-            {props.detailViews.some((slot) => Boolean(slot.localUrl)) &&
-              props.detailViews.map((slot) => (
-                <div className="review-pane detail-review-pane" key={slot.id}>
-                  <div className="review-pane-head">
-                    <strong>{slot.label}</strong>
-                    <span>补充</span>
-                  </div>
-                  <img className="review-image" src={slot.localUrl} alt={slot.label} />
-                </div>
-              ))}
             <div className="review-pane">
               <div className="review-pane-head">
                 <strong>生成首帧</strong>
@@ -1211,6 +1814,14 @@ function FirstFrameStep(props: {
         <div className="parameter-panel">
           <h3>生成参数</h3>
           <label>
+            提示词模型
+            <input
+              value={props.apiSettings.promptModel}
+              onChange={(event) => props.updateApiSettings({ promptModel: event.target.value })}
+              placeholder="gpt-4.1-mini"
+            />
+          </label>
+          <label>
             首帧模型
             <input
               value={props.apiSettings.imageModel}
@@ -1222,30 +1833,10 @@ function FirstFrameStep(props: {
             {props.isTesting ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
             测试接口
           </button>
-          <label>
-            图片接口
-            <input
-              value={props.apiSettings.imageBaseUrl}
-              onChange={(event) => props.updateApiSettings({ imageBaseUrl: event.target.value })}
-              placeholder="https://testvideo.site/v1"
-              autoComplete="off"
-              name="image-api-url"
-            />
-          </label>
-          <label>
-            图片 API Key
-            <div className="key-input">
-              <KeyRound size={16} />
-              <input
-                value={props.apiSettings.imageApiKey}
-                type="password"
-                onChange={(event) => props.updateApiSettings({ imageApiKey: event.target.value })}
-                placeholder="sk-..."
-                autoComplete="new-password"
-                name="image-api-token"
-              />
-            </div>
-          </label>
+          <div className="api-fixed-note">
+            <strong>图片 / 文字接口</strong>
+            <span>后台固定配置</span>
+          </div>
           <label>
             清晰度
             <div className="pill-grid">
@@ -1308,6 +1899,7 @@ function VideoStep(props: {
   setMotionMode: (value: MotionMode) => void;
   canGenerate: boolean;
   isSubmitting: boolean;
+  isSuggesting: boolean;
   isTesting: boolean;
   error: string;
   aspectRatio: string;
@@ -1315,6 +1907,7 @@ function VideoStep(props: {
   statusText: string;
   taskId: string;
   videoUrl: string;
+  onSuggestPrompt: () => void;
   onGenerate: () => void;
   onTest: () => void;
 }) {
@@ -1335,23 +1928,46 @@ function VideoStep(props: {
               </div>
             )}
           </div>
-          <label className="scenario-card">
-            视频动作描述
+          <div className="scenario-card prompt-card">
+            <div className="prompt-label-row">
+              <span>生成视频提示词</span>
+              <button
+                className="dice-action"
+                type="button"
+                title="自动生成视频提示词"
+                aria-label="自动生成视频提示词"
+                disabled={props.isSuggesting}
+                onClick={props.onSuggestPrompt}
+              >
+                {props.isSuggesting ? <LoaderCircle className="spin" size={16} /> : <Dices size={17} />}
+              </button>
+            </div>
             <textarea
               value={props.prompt}
               onChange={(event) => props.setPrompt(event.target.value)}
               placeholder="写你希望视频里发生什么动作，例如：慢慢转身、挥手展示、递出产品、走近镜头..."
             />
-          </label>
+          </div>
         </div>
         <div className="parameter-panel">
           <h3>视频参数</h3>
           <label>
-            视频模型
+            提示词模型
             <input
-              value={props.apiSettings.videoModel}
-              onChange={(event) => props.updateApiSettings({ videoModel: event.target.value })}
+              value={props.apiSettings.promptModel}
+              onChange={(event) => props.updateApiSettings({ promptModel: event.target.value })}
+              placeholder="gpt-4.1-mini"
             />
+          </label>
+          <label>
+            视频模型
+            <select value={props.apiSettings.videoModel} onChange={(event) => props.updateApiSettings({ videoModel: event.target.value })}>
+              {VIDEO_MODEL_OPTIONS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
           </label>
           <button className="secondary-action full-width" type="button" onClick={props.onTest} disabled={props.isTesting}>
             {props.isTesting ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
@@ -1362,7 +1978,7 @@ function VideoStep(props: {
             <input
               value={props.apiSettings.videoBaseUrl}
               onChange={(event) => props.updateApiSettings({ videoBaseUrl: event.target.value })}
-              placeholder="可直接粘贴 POST https://dashscope.aliyuncs.com/..."
+              placeholder="https://ai.wisech.com/v1"
               autoComplete="off"
               name="video-api-url"
             />
@@ -1375,7 +1991,7 @@ function VideoStep(props: {
                 value={props.apiSettings.videoApiKey}
                 type="password"
                 onChange={(event) => props.updateApiSettings({ videoApiKey: event.target.value })}
-                placeholder="sk-..."
+                placeholder="后台已配置，留空即可"
                 autoComplete="new-password"
                 name="video-api-token"
               />
@@ -1556,7 +2172,9 @@ function HistoryDrawer(props: {
               <span>{product.viewMode}</span>
               <div>
                 <b>{product.name}</b>
-                <small>{product.type} · 已锁 {product.lockedNodeCodes.length} 项细节</small>
+                <small>
+                  {product.type} · {product.viewUrls.length} 张视图 · {product.supportViewUrls.length} 张辅助角度 · {product.referenceVideoUrls.length} 个参考视频 · 已锁 {product.lockedNodeCodes.length} 项细节
+                </small>
               </div>
             </article>
           ))}
