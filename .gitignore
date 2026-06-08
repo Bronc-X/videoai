@@ -8,6 +8,7 @@ test-results/
 *.log
 .env
 .env.*
+asset-preview/last-generated-video-url.txt
 
 ShipModel/
 video_interaction_analysis/source.mp4

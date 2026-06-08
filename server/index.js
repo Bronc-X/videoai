@@ -33,6 +33,8 @@ const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini";
 const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 const STALE_PROMPT_MODELS = new Set(["gpt-4.1-mini", "gpt-5.5", LOCAL_PROMPT_MODEL]);
 const STALE_IMAGE_MODELS = new Set(["gpt-4.1-mini", "image-2"]);
+const UPSTREAM_TIMEOUT_MS = 360000;
+const VIDEO_UPSTREAM_TIMEOUT_MS = 90000;
 const OPENAI_VIDEO_GENERATIONS_PATH = "/video/generations";
 const DASHSCOPE_IMAGE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation";
 const DASHSCOPE_VIDEO_SYNTHESIS_PATH = "/services/aigc/video-generation/video-synthesis";
@@ -49,6 +51,28 @@ const CORE_VIEW_INPUT_ORDER = [
   "image_urls[2] = RIGHT_SIDE_VIEW",
   "image_urls[3] = BACK_VIEW",
 ].join("\n");
+const PROMPT_SCENE_BANK = [
+  { title: "夜市摊位", anchor: "夜市小吃摊旁，暖色灯串、折叠桌、手写价签和塑料周转筐都在画面边缘，地面有轻微反光。" },
+  { title: "物流分拣区", anchor: "电商仓库分拣台前，纸箱、扫码枪、传送带和贴着面单的包裹形成真实工作场景。" },
+  { title: "洗衣房", anchor: "自助洗衣房里，滚筒洗衣机、蓝色洗衣篮、找零机和墙上的注意事项贴纸构成干净生活场景。" },
+  { title: "展会通道", anchor: "小型展会通道，折叠展架、样品台、挂绳胸牌和未收起的电源线让画面像临时布展现场。" },
+  { title: "便利店门口", anchor: "便利店门口的自动门旁，冰柜灯箱、雨伞架、促销立牌和扫码付款贴纸清楚可见。" },
+  { title: "地铁站外广场", anchor: "地铁站出口旁，导向牌、共享雨伞机、路面反光和排队护栏组成城市通勤背景。" },
+  { title: "直播间后台", anchor: "直播间后台角落，补光灯、折叠椅、样品货架、透明胶带和手写流程板围绕产品摆放。" },
+  { title: "酒店走廊", anchor: "酒店走廊尽头，行李车、房号牌、清洁车和柔和地毯纹理构成安静但有反差的场景。" },
+  { title: "宠物用品店", anchor: "宠物用品店货架前，牵引绳、玩具球、猫砂袋和小号购物篮作为环境道具。" },
+  { title: "摄影棚侧场", anchor: "小型摄影棚侧场，白色无缝纸、沙袋、反光板、线缆和场记板都在产品周围但不遮挡主体。" },
+  { title: "社区活动室", anchor: "社区活动室里，折叠桌、公告栏、保温杯和签到表形成朴素真实的生活化背景。" },
+  { title: "商场维修通道", anchor: "商场维修通道门口，黄色警示牌、工具箱、推车和灰色防滑地面带出轻微反差感。" },
+];
+
+function pickPromptSceneExamples(count = 6) {
+  return PROMPT_SCENE_BANK
+    .map((scene) => ({ scene, rank: Math.random() }))
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, count)
+    .map(({ scene }) => scene);
+}
 
 function sendJson(res, status, payload) {
   res.writeHead(status, {
@@ -191,16 +215,76 @@ function parseUpstreamBody(text, status) {
     const cloudflareTimeout = status === 524 || lower.includes("error code 524") || lower.includes("a timeout occurred");
     if (cloudflareTimeout) {
       return {
-        error: "上游接口处理超时，请稍后重试或改用异步任务接口。",
+        error: "这次处理时间太久了，请稍后再试。",
         code: "UPSTREAM_TIMEOUT_524",
       };
     }
     const titleMatch = text.match(/<title>(.*?)<\/title>/i);
     return {
-      error: titleMatch?.[1]?.trim() || "上游接口返回了非 JSON 响应。",
+      error: titleMatch?.[1]?.trim() || "服务返回的内容暂时无法识别，请稍后再试。",
       code: "UPSTREAM_NON_JSON",
     };
   }
+}
+
+function getUpstreamErrorText(data) {
+  if (!data) return "";
+  if (typeof data === "string") return data;
+  if (typeof data !== "object") return String(data);
+  const record = data;
+  const error = record.error;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    if (typeof error.message === "string") return error.message;
+    if (typeof error.code === "string") return error.code;
+  }
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.code === "string") return record.code;
+  return JSON.stringify(data);
+}
+
+function extractUpstreamRequestId(text) {
+  const value = String(text || "");
+  return (
+    value.match(/request ID\s+([0-9a-f-]{12,})/i)?.[1] ||
+    value.match(/request[_\s-]?id["']?\s*[:=]\s*["']?([0-9a-f-]{12,})/i)?.[1] ||
+    ""
+  );
+}
+
+function isRetryableUpstreamServerError(data, status) {
+  if (status < 500 || status >= 600) return false;
+  const text = getUpstreamErrorText(data);
+  return /server_error|retry your request|An error occurred while processing your request|do request failed/i.test(text);
+}
+
+function getBase64ImageMime(base64) {
+  if (typeof base64 !== "string" || !base64.trim()) return "";
+  let bytes;
+  try {
+    bytes = Buffer.from(base64.slice(0, 64), "base64");
+  } catch {
+    return "";
+  }
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  if (bytes.length >= 6 && /^GIF8[79]a$/.test(bytes.toString("ascii", 0, 6))) return "image/gif";
+  return "";
+}
+
+function validateGeneratedImagePayload(data) {
+  const records = Array.isArray(data?.data) ? data.data : [];
+  if (!records.length) return "";
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    if (typeof record.url === "string" && /^https?:\/\//i.test(record.url)) return "";
+    if (typeof record.b64_json === "string") {
+      if (getBase64ImageMime(record.b64_json)) return "";
+      return "上游这次没有返回真正的图片，而是返回了网页验证内容。请稍后再试；如果连续出现，请让管理员更换图片上游。";
+    }
+  }
+  return "";
 }
 
 function withUpstreamError(data, status, upstreamUrl) {
@@ -209,12 +293,60 @@ function withUpstreamError(data, status, upstreamUrl) {
     data &&
     typeof data === "object" &&
     ("error" in data || "message" in data);
-  if (hasMessage) return { ...data, upstreamUrl };
+  if (hasMessage) {
+    const next = { ...data };
+    if (typeof next.error === "string") {
+      next.error = toPublicErrorMessage(next.error);
+    } else if (next.error && typeof next.error === "object") {
+      const errorRecord = next.error;
+      next.error = toPublicErrorMessage(errorRecord.message || errorRecord.code || "");
+    } else if (typeof next.message === "string") {
+      next.error = toPublicErrorMessage(next.message);
+    }
+    return { ...next, upstreamUrl };
+  }
   return {
     ...data,
-    error: `上游返回 ${status}，请检查接口路径。`,
+    error: `服务请求没有成功（${status}），请让管理员检查服务配置。`,
     upstreamUrl,
   };
+}
+
+function toPublicErrorMessage(message) {
+  const text = String(message || "").trim();
+  if (!text) return "这次请求没有成功，请稍后再试。";
+  if (/server_error|retry your request|An error occurred while processing your request/i.test(text)) {
+    const requestId = extractUpstreamRequestId(text);
+    return `上游服务这次内部处理失败，系统已经停止本次任务。可以直接重试一次${requestId ? `；请求编号：${requestId}` : ""}。`;
+  }
+  if (/InputTextSensitiveContentDetected|sensitive information|sensitive content|敏感/i.test(text)) {
+    return "这次视频描述被平台安全规则拦下了。可以把动作改得更日常一点，比如挥手、转身、停顿或轻轻晃动，再试一次。";
+  }
+  if (/api key|unauthorized|forbidden|not configured|missing key|请先填写 API Key/i.test(text)) {
+    return "服务密钥还没有配置好，请先让管理员确认后台配置。";
+  }
+  if (/insufficient_user_quota|余额|额度|预扣费|quota|credit/i.test(text)) {
+    return "当前视频服务余额不够了，请充值或换一个费用更低的模型后再试。";
+  }
+  if (/model_not_found|No available channel|没有找到模型|模型不存在|模型不可用/i.test(text)) {
+    return "当前模型暂时不可用，请换一个模型，或让管理员确认模型名称。";
+  }
+  if (/timeout|timed out|Error code 524|超时/i.test(text)) {
+    return "这次处理时间太久了，请稍后再试。";
+  }
+  if (/Invalid image input|Invalid data:image input|Only data:image|Failed to download reference image/i.test(text)) {
+    return "有一张图片还没有准备好，请重新上传或刷新页面后再试。";
+  }
+  if (/Missing task id|task id|缺少视频任务号/i.test(text)) {
+    return "还没有找到这条视频任务，请重新生成一次。";
+  }
+  if (/Not found|404/i.test(text)) {
+    return "没有找到这个服务入口，请刷新页面后再试。";
+  }
+  if (/Unknown server error/i.test(text)) {
+    return "服务刚刚开了个小差，请稍后再试。";
+  }
+  return text;
 }
 
 function getProductFamily(productType) {
@@ -497,6 +629,12 @@ function buildFourViewFirstFramePrompt(payload) {
   const productType = typeof payload.product_type === "string" ? payload.product_type.trim() : "wearable inflatable product";
   const lockedNodes = Array.isArray(payload.locked_nodes) ? payload.locked_nodes : [];
   const supportImageCount = Number.isFinite(Number(payload.support_image_count)) ? Number(payload.support_image_count) : 0;
+  const previousFirstFrameCount = Number.isFinite(Number(payload.previous_first_frame_count)) ? Number(payload.previous_first_frame_count) : 0;
+  const reviewFeedback = payload.review_feedback && typeof payload.review_feedback === "object" && !Array.isArray(payload.review_feedback)
+    ? payload.review_feedback
+    : null;
+  const failedChecks = Array.isArray(reviewFeedback?.failed_checks) ? reviewFeedback.failed_checks : [];
+  const passedChecks = Array.isArray(reviewFeedback?.passed_checks) ? reviewFeedback.passed_checks : [];
   const nodeLines = lockedNodes
     .filter((node) => node && typeof node === "object")
     .map((node) => {
@@ -504,6 +642,24 @@ function buildFourViewFirstFramePrompt(payload) {
       const label = typeof node.label === "string" ? node.label : "";
       const detail = typeof node.detail === "string" ? node.detail : "";
       return `- ${code}${label ? ` (${label})` : ""}: ${detail}`;
+    })
+    .join("\n");
+  const failedFeedbackLines = failedChecks
+    .filter((check) => check && typeof check === "object")
+    .map((check) => {
+      const id = typeof check.id === "string" ? check.id : "failed-check";
+      const label = typeof check.label === "string" ? check.label : "";
+      const detail = typeof check.detail === "string" ? check.detail : "";
+      return `- ${id}${label ? ` (${label})` : ""}: ${detail}`;
+    })
+    .join("\n");
+  const passedFeedbackLines = passedChecks
+    .filter((check) => check && typeof check === "object")
+    .map((check) => {
+      const id = typeof check.id === "string" ? check.id : "passed-check";
+      const label = typeof check.label === "string" ? check.label : "";
+      const detail = typeof check.detail === "string" ? check.detail : "";
+      return `- ${id}${label ? ` (${label})` : ""}: ${detail}`;
     })
     .join("\n");
 
@@ -522,8 +678,19 @@ function buildFourViewFirstFramePrompt(payload) {
     ...buildInflatableHardwareMaterialLocks(productType),
     "If the scene request conflicts with product fidelity, ignore the conflicting scene detail and keep product fidelity.",
     nodeLines ? `Confirmed locked details:\n${nodeLines}` : "Confirmed locked details: preserve every visible product structure from the uploaded references.",
+    previousFirstFrameCount > 0
+      ? "Previous first-frame reference is supplied as the final extra image after the four core views and any preset support views. It is only for preserving the old scene, camera, passed checklist items, and unmentioned areas during targeted regeneration; it is not a new product view or new topology source."
+      : "",
+    failedFeedbackLines
+      ? [
+          "TARGETED REGENERATION FEEDBACK FROM USER REVIEW.",
+          "The original first-frame prompt and scene are unchanged. Correct only the failed checklist items below. Preserve the previous first frame, passed checklist items, scene composition, camera family, lighting, props, and all unmentioned product details as much as possible.",
+          `Failed checklist items to fix:\n${failedFeedbackLines}`,
+          passedFeedbackLines ? `Passed checklist items to keep stable:\n${passedFeedbackLines}` : "No passed checklist items were provided.",
+        ].join("\n")
+      : "",
     "Backend extraction priority: front view locks front proportions and front-owned components; left and right side views lock side thickness, asymmetry, side-visible components, seams and valve direction; back view locks rear silhouette, back seam/zipper, rear-owned tail/valve/components, and rear color/pattern field; preset auxiliary support views only strengthen same-product fragile local evidence.",
-    `LOWER PRIORITY SCENE ONLY:\n${scenePrompt || "Keep a realistic ecommerce product-video setting."}`,
+    `SCENE CONTINUITY CONTEXT:\n${scenePrompt || "Keep a realistic ecommerce product-video setting."}`,
     "Composition rule: full product body visible for the chosen camera, no crop of physically visible feet, face/head details, zipper, valve, appendages, udder, fins, tail, horns, ears, or other identity-critical components. Realistic ecommerce short-video still frame.",
   ].join("\n\n");
 }
@@ -536,6 +703,8 @@ function buildFirstFramePayload(payload) {
     image_urls,
     support_image_urls,
     detail_image_urls,
+    previous_first_frame_url,
+    review_feedback,
     prompt,
     ...upstreamPayload
   } = payload;
@@ -546,14 +715,20 @@ function buildFirstFramePayload(payload) {
   const readableSupportImages = Array.isArray(supportSource)
     ? supportSource.filter((item) => typeof item === "string" && item.trim())
     : [];
+  const previousFirstFrameUrl = typeof previous_first_frame_url === "string" && isReadableVideoFirstFrameUrl(previous_first_frame_url)
+    ? previous_first_frame_url.trim()
+    : "";
   return {
     ...upstreamPayload,
-    image_urls: [...readableImages, ...readableSupportImages],
+    image_urls: [...readableImages, ...readableSupportImages, ...(previousFirstFrameUrl ? [previousFirstFrameUrl] : [])],
+    previous_first_frame_count: previousFirstFrameUrl ? 1 : 0,
     prompt: buildFourViewFirstFramePrompt({
       scene_prompt,
       product_type,
       locked_nodes,
       support_image_count: readableSupportImages.length,
+      previous_first_frame_count: previousFirstFrameUrl ? 1 : 0,
+      review_feedback,
     }),
   };
 }
@@ -603,7 +778,9 @@ function buildVideoFirstFramePixelAnchorLocks(productType) {
     "HANDHELD PROP SAFETY RULE: handheld props are allowed when they support the action, humor, or ecommerce story. They must be treated as external scene/action props, not product components: props may not cover or replace identity-critical product parts, may not force a new costume design, may not hide visible hands/shoes, and may not become a new logo/accessory attached to the product shell.",
     "POSE AND CONTACT LOCK: keep the same arm layout, foot contact, body lean, tail/fin/ear/scarf/belt contact, and product-to-floor/product-to-shelf contact as frame 1 unless the action explicitly asks for a small physically plausible adjustment. If a prop is introduced or moved, only the prop and the nearest visible hand may change; the costume geometry, component positions, visible real hands/shoes, face/window/mouth details, valve/zipper, and body silhouette must remain locked.",
     "Quality rule: higher resolution, sharper lighting, denoising, cinematic polish, or video enhancement may improve only compression/background clarity. It must not improve the product by changing shape, proportions, texture, facial graphics, hands, feet, bag/object labels, material wrinkles, seams, zipper teeth, valve rings, or pose.",
-    "Motion must be deformation-light: small local wobble, tiny hand/shoulder/body movement, and slight fabric breathing only. Keep any existing hand-to-object contact, reaching hand, held bag, visible shoes, tail, valve, and body outline in the same relative location unless the user explicitly asks for a tiny physically plausible movement.",
+    "Comedy story is required, not optional: the clip must show a visible three-beat gag, a misunderstanding or prop reaction, a pause, and a small twist. Product fidelity and comedy must coexist; do not remove the gag just to make the product stand still.",
+    "Motion must be visible but controlled: allow a clear arm gesture, elastic side-to-side wobble, small recoil, half-step slide, prop interaction, and a freeze-frame style pause. Keep any existing hand-to-object contact, reaching hand, held bag, visible shoes, tail, valve, and body outline physically plausible while still performing the gag.",
+    "MOTION AMPLITUDE CEILING: keep the face window and zipper mostly vertical throughout the clip. Feet may stay planted or slide a short half-step; do not jump, run, fall, fully bow, spin, reveal a new side, or turn the gag into a dance routine. The action should be easy to see at ecommerce-video scale.",
     "Hard fail: if frame 1 or any later frame looks like a newly generated cleaner product rather than the approved first frame gently moving, the video is wrong. Reject mascot beautification, pose reblocking, product redraw, product repaint, background resynthesis that changes shelf/object contact, and object replacement.",
     ...familyLocks,
   ];
@@ -618,13 +795,67 @@ function sanitizeVideoPromptText(text) {
     .replace(/吓一跳/g, "愣了一下")
     .replace(/吓/g, "愣")
     .replace(/推了一下/g, "轻轻碰到")
-    .replace(/推/g, "轻碰")
+    .replace(/推/g, "轻移")
     .replace(/撞上/g, "差点贴到")
     .replace(/撞/g, "轻碰")
     .replace(/砰的一声/g, "突然轻响")
+    .replace(/攻击|打斗|暴力|危险|受伤|摔倒|逃跑|追赶|抢夺|砸|爆炸/g, "安全的小插曲")
     .replace(/鬼脸/g, "无辜表情")
     .replace(/求助/g, "示意")
-    .replace(/慌/g, "忙");
+    .replace(/steal|stolen|attack|violence|danger|injury|fight|chase|escape|explode/gi, "safe playful beat")
+    .replace(/慌/g, "忙")
+    .trim();
+}
+
+function sanitizeUpstreamVideoPromptText(text) {
+  return String(text || "")
+    .replace(/locked dead across all frames/gi, "strictly consistent across all frames")
+    .replace(/\bHARD FAIL DETAILS\b/g, "STRICT PRESERVATION DETAILS")
+    .replace(/\bHard fail\b/g, "Strict preservation rule")
+    .replace(/\bNegative material rule\b/g, "Material fidelity boundary")
+    .replace(/\bNegative:\s*/g, "Boundary: ")
+    .replace(/baby[- ]doll/gi, "toy-like")
+    .replace(/baby doll/gi, "toy-like")
+    .replace(/realistic animal skin/gi, "realistic animal-surface texture")
+    .replace(/realistic shark skin/gi, "realistic shark-surface texture")
+    .replace(/human skin replacement/gi, "human-surface texture replacement")
+    .replace(/\bdead\b/gi, "strict")
+    .replace(/\battack\b/gi, "action beat")
+    .replace(/\bviolence\b/gi, "conflict")
+    .replace(/\bdanger\b/gi, "risk")
+    .replace(/\binjury\b/gi, "mismatch")
+    .replace(/\bfight\b/gi, "busy movement")
+    .replace(/\bchase\b/gi, "follow")
+    .replace(/\bescape\b/gi, "leave")
+    .replace(/\bexplode\b/gi, "pop")
+    .trim();
+}
+
+function isSensitiveTextError(data, status) {
+  const text = JSON.stringify(data || {});
+  return status === 400 && /InputTextSensitiveContentDetected|sensitive information|sensitive content|敏感/i.test(text);
+}
+
+function buildSensitiveSafeVideoActionPrompt(payload) {
+  const productType = typeof payload.product_type === "string" && payload.product_type.trim()
+    ? payload.product_type.trim()
+    : "当前充气产品";
+  const source = sanitizeVideoPromptText(typeof payload.action_prompt === "string" ? payload.action_prompt : "");
+  const scene = sanitizeVideoPromptText(typeof payload.scene_prompt === "string" ? payload.scene_prompt : "");
+  return [
+    `${productType}在已确认首帧的同一场景中做一个安全、轻松、无冲突的短视频动作。`,
+    source ? `保留用户想要的轻微动作方向：${source}` : "动作只包含小幅摆动、慢半拍抬手、停顿、轻微回弹和一个无害反转。",
+    scene ? `沿用场景元素：${scene}` : "沿用首帧原地点、原道具和原镜头。",
+    "只写生活化、幽默、产品安全的小动作；需要有一个小包袱或反转。BGM 和背景对话可有可无，可以作为气氛提示，但不要强制。所有动作都保持轻松、无冲突、可拍摄、低风险。",
+  ].join("");
+}
+
+function createSensitiveSafeVideoPayload(payload) {
+  return {
+    ...payload,
+    action_prompt: buildSensitiveSafeVideoActionPrompt(payload),
+    scene_prompt: sanitizeVideoPromptText(payload.scene_prompt),
+  };
 }
 
 function buildProductVideoPrompt(payload) {
@@ -665,7 +896,8 @@ function buildProductVideoPrompt(payload) {
     nodeLines ? `Confirmed locked details:\n${nodeLines}` : "Confirmed locked details: preserve every visible product structure from the references.",
     "ACTION OBJECT GUARDRAIL: the lower-priority action prompt may introduce or animate handheld props, but the prop is always lower priority than product fidelity. If the action asks for holding, drinking, carrying, grabbing, showing, or hugging an object, allow the object only when it stays visually separate from the costume shell and does not obscure or rewrite hands, shoes, face/window/mouth details, valves, zipper, tail/fins/ears/scarf/belt, seams, wrinkles, colors, or body silhouette.",
     "VIDEO QUALITY GUARDRAIL: model, resolution, HD, high quality, cinematic, clearer, sharper, pro, or quality settings must never change product identity. Quality is allowed only after the exact first-frame product geometry, colors, components, material wrinkles, ports, zipper, hands, shoes, and pose remain unchanged.",
-    `LOWER PRIORITY USER ACTION ONLY:\n${actionPrompt || "Use a simple ecommerce product display motion."}`,
+    `COMEDY ACTION BRIEF, SAME PRIORITY AS SCENE CONTINUITY:\n${actionPrompt || "Use a clear three-beat ecommerce comedy motion: notice a small prop, react half a beat too seriously, freeze for a tiny twist, then recover with a soft inflatable wobble."}`,
+    "COMEDY PACING REQUIREMENT: show the gag visually in 2-3 readable beats. At least one beat must be a visible reaction or prop interaction, not just breathing, idle swaying, or a static product display.",
     `Scene continuity:\n${scenePrompt || "Keep the approved first-frame scene."}`,
     `Motion rule:\n${motionRule}`,
     "Camera rule: stable vertical ecommerce shot, full body visible, no cuts, no fast zoom, no crop of face/head details, zipper, side valve, feet, fins, horns, ears, udder, hooves, tail, or other identity-critical components.",
@@ -691,7 +923,9 @@ function buildVideoPayload(payload) {
   return {
     ...upstreamPayload,
     ...(model ? { model } : {}),
-    prompt: buildProductVideoPrompt({ action_prompt, scene_prompt, product_type, locked_nodes, motion_rule, image_urls, support_image_urls, detail_image_urls }),
+    prompt: sanitizeUpstreamVideoPromptText(
+      buildProductVideoPrompt({ action_prompt, scene_prompt, product_type, locked_nodes, motion_rule, image_urls, support_image_urls, detail_image_urls }),
+    ),
   };
 }
 
@@ -710,7 +944,7 @@ function validateFourViewImages(payload) {
   if ("foreground_source_url" in body) {
     return {
       ok: false,
-      error: "四视图首帧不接受 foreground_source_url：请提交 image_urls，且必须包含正面、左侧、右侧、背面四张核心产品图。预设辅助角度请放在 support_image_urls。",
+      error: "请上传正面、左侧、右侧、背面四张核心产品图，再生成首帧。",
     };
   }
   const core = pickReadableImages(body.image_urls);
@@ -719,14 +953,14 @@ function validateFourViewImages(payload) {
   if (core.hasBlob || core.hasUnreadable || core.readableImages.length !== 4) {
     return {
       ok: false,
-      error: "四视图首帧 need exactly four readable core product view images：请上传正面、左侧、右侧、背面四张核心图片，提交 data:image/ 或 http(s) 图片地址；不要提交 blob: 本地预览地址。",
+      error: "请上传正面、左侧、右侧、背面四张可用的核心产品图，再生成首帧。",
     };
   }
 
   if (support.hasBlob || support.hasUnreadable) {
     return {
       ok: false,
-      error: "预设辅助角度 support_image_urls 只接受 data:image/ 或 http(s) 图片地址；不要提交 blob: 本地预览地址。",
+      error: "有一张辅助角度图片还没有准备好，请刷新页面或重新选择产品后再试。",
     };
   }
 
@@ -750,12 +984,22 @@ function isVolcengineUrl(url) {
   }
 }
 
-function buildLabeledImageContent(imageUrls) {
+function buildLabeledImageContent(imageUrls, previousFirstFrameCount = 0) {
   return imageUrls.flatMap((image, index) => {
     const coreView = CORE_VIEW_LABELS[index];
     if (coreView) {
       return [
         { text: `${coreView.contentLabel}: ${coreView.label}.` },
+        { image },
+      ];
+    }
+    const previousFirstFrameStart = imageUrls.length - previousFirstFrameCount;
+    if (previousFirstFrameCount > 0 && index >= previousFirstFrameStart) {
+      return [
+        {
+          text:
+            "Previous generated first frame for targeted regeneration. Use it only to preserve the scene, camera, passed checklist items, and unmentioned details while correcting the user's failed checklist items. It is not a new topology view.",
+        },
         { image },
       ];
     }
@@ -769,8 +1013,9 @@ function buildLabeledImageContent(imageUrls) {
 function buildDashScopeImagePayload(payload) {
   const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
   const imageUrls = Array.isArray(payload.image_urls) ? payload.image_urls.filter((item) => typeof item === "string" && item.trim()) : [];
+  const previousFirstFrameCount = Number.isFinite(Number(payload.previous_first_frame_count)) ? Number(payload.previous_first_frame_count) : 0;
   const content = [
-    ...buildLabeledImageContent(imageUrls),
+    ...buildLabeledImageContent(imageUrls, previousFirstFrameCount),
     { text: prompt },
   ];
 
@@ -850,7 +1095,7 @@ async function buildOpenAIImageEditFormData(payload) {
   for (let index = 0; index < images.length; index += 1) {
     const imageUrl = images[index]?.image_url;
     const { blob, fileName } = await imageUrlToBlob(imageUrl, index);
-    form.append("image", blob, fileName);
+    form.append("image[]", blob, fileName);
   }
   return form;
 }
@@ -1039,30 +1284,139 @@ async function proxyJson(fallbackPath, payload, kind = "generic") {
     return {
       status: 400,
       payload: {
-        error: "请先填写 API Key。",
+        error: "服务密钥还没有配置好，请先让管理员确认后台配置。",
         upstreamUrl: resolvedUpstreamUrl,
       },
     };
   }
 
-  const proxyPayload = buildProxyPayload(kind, resolvedUpstreamUrl, upstreamPayload);
   const sendMultipartImageEdit = kind === "image" && !isDashScopeUrl(resolvedUpstreamUrl);
-  const body = sendMultipartImageEdit
-    ? await buildOpenAIImageEditFormData(proxyPayload)
-    : JSON.stringify(proxyPayload);
+  const retryDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const response = await fetch(resolvedUpstreamUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      ...(sendMultipartImageEdit ? {} : { "Content-Type": "application/json" }),
-      ...(isDashScopeUrl(resolvedUpstreamUrl) && kind === "video" ? { "X-DashScope-Async": "enable" } : {}),
-    },
-    body,
-  });
-  const text = await response.text();
-  const data = parseUpstreamBody(text, response.status);
-  return { status: response.status, payload: withUpstreamError(data, response.status, resolvedUpstreamUrl) };
+  async function sendProxyRequest(nextUpstreamPayload, retryReason = "") {
+    const proxyPayload = buildProxyPayload(kind, resolvedUpstreamUrl, nextUpstreamPayload);
+    const body = sendMultipartImageEdit
+      ? await buildOpenAIImageEditFormData(proxyPayload)
+      : JSON.stringify(proxyPayload);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), kind === "video" ? VIDEO_UPSTREAM_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(resolvedUpstreamUrl, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...(sendMultipartImageEdit ? {} : { "Content-Type": "application/json" }),
+          ...(isDashScopeUrl(resolvedUpstreamUrl) && kind === "video" ? { "X-DashScope-Async": "enable" } : {}),
+        },
+        body,
+      });
+    } catch (error) {
+      const isAbortError = error instanceof Error && error.name === "AbortError";
+      console.error("[proxy] upstream connection failed", {
+        kind,
+        upstreamUrl: resolvedUpstreamUrl,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        status: 502,
+        payload: {
+          error:
+            isAbortError && kind === "image"
+              ? "首帧生成还在上游处理，但这次等待时间太久了，系统先停下来了。请再试一次，或稍后换个更短的提示词再生成。"
+              : isAbortError && kind === "video"
+                ? "视频生成服务这次等待时间太久了，系统先停下来了。请稍后再试，或把动作描述写得更短一点。"
+            : kind === "image"
+              ? "首帧生成服务暂时连不上。不是本地项目没启动，是上游图片服务连接失败，请稍后再试。"
+              : "视频生成服务暂时连不上。不是本地项目没启动，是上游视频服务连接失败，请稍后再试。",
+          code: isAbortError ? "UPSTREAM_REQUEST_TIMEOUT" : "UPSTREAM_CONNECTION_FAILED",
+          upstreamUrl: resolvedUpstreamUrl,
+          upstreamError: error instanceof Error ? error.message : String(error),
+        },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+    const text = await response.text();
+    const data = parseUpstreamBody(text, response.status);
+    const requestId = extractUpstreamRequestId(text || getUpstreamErrorText(data));
+    const imagePayloadError = kind === "image" && response.ok ? validateGeneratedImagePayload(data) : "";
+    if (imagePayloadError) {
+      return {
+        status: 502,
+        payload: {
+          error: imagePayloadError,
+          code: "UPSTREAM_NON_IMAGE_RESULT",
+          upstreamUrl: resolvedUpstreamUrl,
+        },
+      };
+    }
+    if (isRetryableUpstreamServerError(data, response.status)) {
+      return {
+        status: response.status,
+        retryableUpstreamServerError: true,
+        payload: {
+          error: toPublicErrorMessage(text || getUpstreamErrorText(data)),
+          code: "UPSTREAM_SERVER_ERROR",
+          upstreamUrl: resolvedUpstreamUrl,
+          upstreamRequestId: requestId,
+          retryReason,
+        },
+      };
+    }
+    return {
+      status: response.status,
+      payload: withUpstreamError(
+        retryReason ? { ...data, retryReason, promptSanitizedRetry: true } : data,
+        response.status,
+        resolvedUpstreamUrl,
+      ),
+    };
+  }
+
+  const firstResult = await sendProxyRequest(upstreamPayload);
+  if ((kind === "image" || kind === "video") && firstResult.retryableUpstreamServerError) {
+    console.error("[proxy] retrying upstream server error", {
+      kind,
+      upstreamUrl: resolvedUpstreamUrl,
+      upstreamRequestId: firstResult.payload?.upstreamRequestId || "",
+    });
+    await retryDelay(1000);
+    const retryResult = await sendProxyRequest(upstreamPayload, "Upstream returned a retryable server error; request was retried once automatically.");
+    if (retryResult.retryableUpstreamServerError) {
+      return {
+        status: 502,
+        payload: {
+          ...retryResult.payload,
+          retryCount: 1,
+          promptSanitizedRetry: false,
+        },
+      };
+    }
+    return retryResult;
+  }
+  if (kind === "video" && isSensitiveTextError(firstResult.payload, firstResult.status)) {
+    const retryResult = await sendProxyRequest(
+      createSensitiveSafeVideoPayload(upstreamPayload),
+      "Video text was rewritten with positive, low-risk action wording after upstream text-safety rejection.",
+    );
+    if (isSensitiveTextError(retryResult.payload, retryResult.status)) {
+      return {
+        status: retryResult.status,
+        payload: withUpstreamError(
+          {
+            error: "这次视频描述被平台安全规则拦下了。系统已经自动改写过一次，但平台仍然没有放行。可以把动作改得更日常一点，比如挥手、转身、停顿或轻轻晃动，再试一次。",
+            promptSanitizedRetry: true,
+          },
+          retryResult.status,
+          resolvedUpstreamUrl,
+        ),
+      };
+    }
+    return retryResult;
+  }
+  return firstResult;
 }
 
 async function testProxy(fallbackPath, payload, kind = "generic") {
@@ -1073,7 +1427,7 @@ async function testProxy(fallbackPath, payload, kind = "generic") {
       status: apiKey ? 200 : 400,
       payload: apiKey
         ? { ok: true, model, modelFound: Boolean(model), upstreamUrl: configuredUrl }
-        : { error: "请先填写 API Key。", upstreamUrl: configuredUrl },
+        : { error: "服务密钥还没有配置好，请先让管理员确认后台配置。", upstreamUrl: configuredUrl },
     };
   }
 
@@ -1083,7 +1437,7 @@ async function testProxy(fallbackPath, payload, kind = "generic") {
     return {
       status: 400,
       payload: {
-        error: "请先填写 API Key。",
+        error: "服务密钥还没有配置好，请先让管理员确认后台配置。",
         upstreamUrl,
       },
     };
@@ -1127,7 +1481,7 @@ async function testProxy(fallbackPath, payload, kind = "generic") {
   return {
     status: 400,
     payload: {
-      error: `接口已连通，但没有找到模型 ${model}。`,
+      error: `服务已连通，但当前模型 ${model} 暂时不可用。请换一个模型，或让管理员确认模型名称。`,
       model,
       modelFound: false,
       upstreamUrl,
@@ -1184,6 +1538,40 @@ function cleanGeneratedPrompt(text) {
     .trim();
 }
 
+function parsePromptPairText(text) {
+  const cleaned = cleanGeneratedPrompt(text);
+  const candidates = [cleaned];
+  const objectMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objectMatch) candidates.push(objectMatch[0]);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const firstFramePrompt = typeof parsed.firstFramePrompt === "string"
+        ? parsed.firstFramePrompt.trim()
+        : typeof parsed.first_frame_prompt === "string"
+          ? parsed.first_frame_prompt.trim()
+          : "";
+      const videoPrompt = typeof parsed.videoPrompt === "string"
+        ? parsed.videoPrompt.trim()
+        : typeof parsed.video_prompt === "string"
+          ? parsed.video_prompt.trim()
+          : "";
+      if (firstFramePrompt && videoPrompt) {
+        return {
+          sceneTitle: typeof parsed.sceneTitle === "string" ? parsed.sceneTitle.trim() : "",
+          sceneAnchor: typeof parsed.sceneAnchor === "string" ? parsed.sceneAnchor.trim() : "",
+          firstFramePrompt,
+          videoPrompt: sanitizeVideoPromptText(videoPrompt),
+          continuityLocks: typeof parsed.continuityLocks === "string" ? parsed.continuityLocks.trim() : "",
+        };
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
+}
+
 function buildPromptSuggestionMustMention(productType) {
   const family = getProductFamily(productType);
   if (family === "shark") {
@@ -1224,6 +1612,78 @@ function buildPromptSuggestionHardwareMustMention(productType) {
   return "还必须自然写入硬件和材质锁：阀门、鼓风阀、进气口、出气口、泵口、拉链、缝线和布料褶皱都只能按四视图位置归位；看不见时隐藏，不允许挪位、复制、换色、简化或改成装饰。";
 }
 
+function buildPromptPairSuggestionPayload(payload) {
+  const productType = typeof payload.product_type === "string" && payload.product_type.trim() ? payload.product_type.trim() : "当前充气产品";
+  const stableProductName = getProductStableName(productType);
+  const currentFirstFramePrompt = typeof payload.current_first_frame_prompt === "string" ? payload.current_first_frame_prompt.trim() : "";
+  const currentVideoPrompt = typeof payload.current_video_prompt === "string" ? payload.current_video_prompt.trim() : "";
+  const referenceVideoCount = Number.isFinite(Number(payload.reference_video_count)) ? Number(payload.reference_video_count) : 0;
+  const supportImageCount = Number.isFinite(Number(payload.support_image_count)) ? Number(payload.support_image_count) : 0;
+  const lockedNodes = Array.isArray(payload.locked_nodes) ? payload.locked_nodes : [];
+  const lockLines = lockedNodes
+    .filter((node) => node && typeof node === "object")
+    .slice(0, 10)
+    .map((node) => {
+      const code = typeof node.code === "string" ? node.code : "Locked_Detail";
+      const label = typeof node.label === "string" ? node.label : "";
+      const detail = typeof node.detail === "string" ? node.detail : "";
+      return `- ${code}${label ? ` / ${label}` : ""}: ${detail}`;
+    })
+    .join("\n");
+  const productLocks = buildInflatableHardwareMaterialLocks(productType)
+    .concat(buildFirstFrameProductVisualLocks(productType))
+    .concat(buildVideoProductVisualLocks(productType))
+    .slice(0, 26)
+    .join("\n");
+  const sceneExamples = pickPromptSceneExamples()
+    .map((scene) => `${scene.title}: ${scene.anchor}`)
+    .join("\n");
+
+  return {
+    model: payload.model,
+    input: [
+      {
+        role: "system",
+        content: [
+          "你是电商产品图生视频的提示词导演。",
+          "只输出一个合法 JSON 对象，不要 Markdown，不要解释。",
+          "必须一次生成同一场景下的 firstFramePrompt 和 videoPrompt。两个提示词必须共享同一地点、同一道具关系、同一镜头、同一产品身份。",
+          "必须调用真实模型创作，不要套用固定模板。场景要高度多样，避免反复使用明亮超市、明亮商场、办公室、电梯。",
+          "视频提示词必须更幽默诙谐，并且有一个明确的小反转或包袱；仍然只用正向、生活化、轻松幽默、无冲突、低风险的动作表达，不要列出禁词清单。",
+          "BGM 和背景对话不是强制项；如果场景适合，可以自然写一句轻快 BGM、背景广播声、路人小声吐槽或旁白反应，但不能喧宾夺主，不能遮挡产品一致性。",
+          "视频动作必须是微动：脸窗和拉链基本保持竖直，双脚贴地，禁止大幅前倾、弯腰、转体、抬高脚、跳跃或把小动作放大成夸张表演。",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          `产品：${productType}`,
+          `稳定产品名：${stableProductName}`,
+          `参考视频数量：${referenceVideoCount}`,
+          `本地辅助角度数量：${supportImageCount}`,
+          "候选场景池，必须从这些方向扩展出一个具体、可拍、有道具的场景；不要照抄旧提示词：",
+          sceneExamples,
+          "产品硬锁摘要：",
+          productLocks,
+          lockLines ? `前端锁定节点：\n${lockLines}` : "前端锁定节点：使用产品四视图中的所有可见组件。",
+          currentFirstFramePrompt ? `当前首帧提示词，仅用于避免重复：\n${currentFirstFramePrompt}` : "当前首帧提示词为空。",
+          currentVideoPrompt ? `当前视频提示词，仅用于避免重复：\n${currentVideoPrompt}` : "当前视频提示词为空。",
+          "输出 JSON schema：",
+          JSON.stringify({
+            sceneTitle: "短场景名",
+            sceneAnchor: "同一场景的地点、道具、镜头和气氛，60-120字",
+            firstFramePrompt: "220-420字中文，描述首帧静态画面和产品一致性",
+            videoPrompt: "160-260字中文，描述同一场景下2-3个安全、轻松、幽默的微动作，并有一个小反转或包袱；可以自然带一句轻快BGM、背景广播声或路人小声吐槽，但不是强制；必须写明脸窗和拉链基本竖直、双脚贴地、不大幅前倾、不转体",
+            continuityLocks: "一句话说明两个提示词共享哪些场景和产品身份约束",
+          }),
+        ].join("\n\n"),
+      },
+    ],
+    temperature: 1,
+    max_output_tokens: 1200,
+  };
+}
+
 function buildPromptSuggestionPayload(payload) {
   const kind = payload.kind === "video" ? "video" : "firstFrame";
   const productType = typeof payload.product_type === "string" && payload.product_type.trim() ? payload.product_type.trim() : "通用充气服";
@@ -1253,7 +1713,7 @@ function buildPromptSuggestionPayload(payload) {
   const task =
     kind === "firstFrame"
       ? "生成一段可直接填入“生成首帧提示词”的中文提示词。它要描述一个强故事性、短视频感、略带恶搞但不复杂的首帧场景，同时明确产品一致性优先。"
-      : "生成一段可直接填入“生成视频提示词”的中文提示词。它必须像 TikTok 电商短视频导演写的喜剧动作脚本：严格沿用当前首帧场景和当前产品名，前三分之二只写清楚可见道具、误会点、停顿、反应和 2-3 个搞怪动作节拍；最后一句才用自然短句锁定产品一致性。不要输出产品说明书，不要输出阀门/拉链/材质清单。";
+      : "生成一段可直接填入“生成视频提示词”的中文提示词。它必须像 TikTok 电商短视频导演写的喜剧动作脚本：严格沿用当前首帧场景和当前产品名，前三分之二只写清楚可见道具、误会点、停顿、反应、一个明确的小反转和 2-3 个搞怪动作节拍；BGM 或背景对话可以自然出现但不是强制；最后一句才用自然短句锁定产品一致性。不要输出产品说明书，不要输出阀门/拉链/材质清单。";
   const modeRules =
     kind === "firstFrame"
       ? [
@@ -1268,11 +1728,12 @@ function buildPromptSuggestionPayload(payload) {
             ? "严禁更换首帧场景类型和场景道具：必须沿用下面 SCENE ANCHOR 中的地点和至少两个原有道具词；如果 SCENE ANCHOR 写了海鲜区/冰鲜鱼柜/价签/购物车，就不能改成零食货架/办公室/电梯等别的地点。"
             : "如果当前首帧场景为空，才可以自行选择一个具体可拍的生活化场景。",
           "视频必须保持原镜头族，但动作要比静态展示更有戏：写成 2-3 个节拍的小短剧，例如先认真营业或装无辜、被场景里的某个无害细节打断、夸张僵住/缩手/轻微踉跄、最后做一个滑稽补救。",
-          "必须有一个明确笑点：误会、反差、过度认真、慢半拍反应、突然定住、假装没事、和小道具较真，至少选两种写进输出。",
+          "必须有一个明确笑点和一个轻反转：误会、反差、过度认真、慢半拍反应、突然定住、假装没事、和小道具较真，至少选两种写进输出，并在结尾形成包袱。",
           "允许一个较明显但产品安全的大动作：夸张伸手/缩手、左右摇晃、轻微踉跄半步、身体弹性晃动、蹲一下又弹回、和首帧已有道具发生轻微互动；动作要看得见，不能只是站着不动或几乎看不见的呼吸抖动。",
           "风格要灵动、幽默、有一点搞笑甚至搞怪，像 TikTok 电商短视频里的荒诞小桥段；戏剧性来自场景反差、表演节奏、停顿和道具互动，不来自重绘产品。",
+          "BGM 和背景对话不是硬要求；如果能增强包袱，可以写一句轻快BGM、背景广播声、路人小声吐槽或旁白反应，但不要让声音说明替代画面动作。",
           "输出必须先写喜剧情节，再写产品锁。前 2 句不得出现阀门、拉链、PVC、缝线、泵口、体积包络这类技术锁词；这些只能出现在最后一句。",
-          "用安全、无冲突的喜剧表达：可以写误会、愣住、轻碰、差点贴到、夸张缩手、无辜表情、滑稽补救；避免偷、被发现、推、撞、吓、攻击、摔倒、危险、求助等敏感或冲突词。",
+          "用安全、无冲突的喜剧表达：可以写误会、愣住、轻碰、差点贴到、夸张缩手、无辜表情、滑稽补救；只使用正向动作描述，不要列出禁词清单。",
           "必须把产品一致性约束压缩成最后一句自然说明；不要让整段变成阀门、拉链、材质的清单。",
           "已确认首帧是像素级身份锚点，不是风格参考；不要写高清重绘、质量提升、重新摆拍、双手重排、道具替换、产品美化或更干净的卡通化。",
           "可以写手持杯子、袋子、工具、标牌等剧情道具，但它们必须是外部道具，不能变成产品新增组件；道具不得遮挡或替代脸窗、嘴带、围巾、手脚、鞋子、阀门、拉链、尾部、色块、缝线和身体轮廓。",
@@ -1311,7 +1772,7 @@ function buildPromptSuggestionPayload(payload) {
           kind === "video" ? "" : buildPromptSuggestionHardwareMustMention(productType),
           currentPrompt ? `当前提示词，可参考但不要照抄：\n${currentPrompt}` : "当前提示词为空，请直接生成。",
           kind === "video"
-            ? `输出长度控制在 160-260 个中文字符。必须像一个有包袱的小视频动作脚本：第一句写“${stableProductName}”在 SCENE ANCHOR 原场景和原道具里的尴尬处境，第二句写 2-3 个搞怪动作节拍和一个停顿笑点，最后一句只用简短自然的话锁定产品一致性。不要换场景，不要换产品名，不要把原场景替换成相似场景。`
+            ? `输出长度控制在 160-260 个中文字符。必须像一个有包袱的小视频动作脚本：第一句写“${stableProductName}”在 SCENE ANCHOR 原场景和原道具里的尴尬处境，第二句写 2-3 个搞怪动作节拍和一个反转停顿笑点；可以自然加一句轻快BGM、背景广播声或路人小声吐槽，但不是强制；最后一句只用简短自然的话锁定产品一致性。不要换场景，不要换产品名，不要把原场景替换成相似场景。`
             : "输出长度控制在 220-420 个中文字符，必须自然、可执行、故事性强，且明确货对版约束。",
         ].join("\n\n"),
       },
@@ -1319,31 +1780,6 @@ function buildPromptSuggestionPayload(payload) {
     temperature: 0.9,
     max_output_tokens: 700,
   };
-}
-
-function buildLocalPromptSuggestion(payload) {
-  const kind = payload.kind === "video" ? "video" : "firstFrame";
-  const productType = typeof payload.product_type === "string" && payload.product_type.trim() ? payload.product_type.trim() : "通用充气服";
-  const stableProductName = getProductStableName(productType);
-  const scenePrompt = typeof payload.scene_prompt === "string" && payload.scene_prompt.trim()
-    ? payload.scene_prompt.trim()
-    : "生活化短视频场景";
-  const mustMention = buildPromptSuggestionMustMention(productType).replace(/^Must naturally include these .*?:\s*/i, "");
-  const hardwareLocks = buildPromptSuggestionHardwareMustMention(productType);
-
-  if (kind === "video") {
-    return [
-      `${stableProductName}从已确认首帧的${scenePrompt}里自然动起来，先保持原镜头、原地点和原有道具关系。`,
-      "它做出一个灵动搞怪的小动作：先轻轻晃动身体和手臂，再和身边道具发生安全的小互动，最后夸张停顿一下形成短视频包袱。",
-      `全程锁定产品一致性：${mustMention} ${hardwareLocks} 首帧的体积包络、颜色、布料褶皱、手脚鞋子、阀门、拉链、尾部和脸部结构都不得漂移。`,
-    ].join("");
-  }
-
-  return [
-    `${stableProductName}出现在${scenePrompt}，采用正面或轻微正面三分之二视角，全身入镜、双脚落地，场景有生活化短视频反差但不抢产品。`,
-    `产品必须严格按四视图保持一致：${mustMention} ${hardwareLocks}`,
-    "背景、灯光和道具只服务剧情，不遮挡、不替代、不改写任何产品组件，保持真实可穿戴充气服的薄尼龙/PVC褶皱和人体穿戴比例。",
-  ].join("");
 }
 
 function shouldUseLocalPromptSuggestion(payload) {
@@ -1357,9 +1793,15 @@ function isPromptModelUnavailable(data, status) {
 }
 
 async function proxyPromptSuggestion(payload) {
+  const isPair = payload && typeof payload === "object" && payload.kind === "pair";
   if (shouldUseLocalPromptSuggestion(payload)) {
-    const prompt = buildLocalPromptSuggestion(payload);
-    return { status: 200, payload: { prompt, upstreamUrl: "local://prompt-suggestion", localFallback: true } };
+    return {
+      status: 400,
+      payload: {
+        error: "提示词模型还没有配置好，请先确认模型名称，然后点击骰子重新生成。",
+        model: typeof payload.model === "string" ? payload.model : "",
+      },
+    };
   }
 
   const { apiKey, upstreamUrl, upstreamPayload } = pickProxyConfig(
@@ -1368,9 +1810,9 @@ async function proxyPromptSuggestion(payload) {
     "prompt",
   );
   if (!apiKey) {
-    return { status: 400, payload: { error: "请先填写 API Key。", upstreamUrl } };
+    return { status: 400, payload: { error: "服务密钥还没有配置好，请先让管理员确认后台配置。", upstreamUrl } };
   }
-  const requestBody = JSON.stringify(buildPromptSuggestionPayload(upstreamPayload));
+  const requestBody = JSON.stringify(isPair ? buildPromptPairSuggestionPayload(upstreamPayload) : buildPromptSuggestionPayload(upstreamPayload));
   let lastPayload = {};
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const response = await fetch(upstreamUrl, {
@@ -1386,28 +1828,43 @@ async function proxyPromptSuggestion(payload) {
     lastPayload = data;
     if (!response.ok) {
       if (isPromptModelUnavailable(data, response.status)) {
-        const prompt = buildLocalPromptSuggestion(upstreamPayload);
         return {
-          status: 200,
+          status: response.status,
           payload: {
-            prompt,
+            error: "提示词模型暂时不可用，请确认模型名称或稍后再点一次骰子。",
             upstreamUrl,
-            localFallback: true,
-            fallbackReason: "提示词模型渠道不可用，已改用本地安全草稿。",
+            model: upstreamPayload.model,
           },
         };
       }
       return { status: response.status, payload: withUpstreamError(data, response.status, upstreamUrl) };
     }
     const rawPrompt = cleanGeneratedPrompt(extractGeneratedText(data));
+    if (isPair) {
+      const promptPair = parsePromptPairText(rawPrompt);
+      if (promptPair) {
+        return {
+          status: 200,
+          payload: {
+            ...promptPair,
+            upstreamUrl,
+            model: upstreamPayload.model,
+            localFallback: false,
+            retryCount: attempt - 1,
+          },
+        };
+      }
+      lastPayload = { error: "这次没有拿到完整提示词，请再点一次骰子。", rawPrompt };
+      continue;
+    }
     const prompt = upstreamPayload.kind === "video" ? sanitizeVideoPromptText(rawPrompt) : rawPrompt;
-    if (prompt) return { status: 200, payload: { prompt, upstreamUrl, retryCount: attempt - 1 } };
+    if (prompt) return { status: 200, payload: { prompt, upstreamUrl, model: upstreamPayload.model, localFallback: false, retryCount: attempt - 1 } };
   }
   return {
     status: 502,
     payload: {
       ...lastPayload,
-      error: "提示词模型没有返回可用文本。",
+      error: "这次没有拿到完整提示词，请再点一次骰子。",
       upstreamUrl,
     },
   };
@@ -1452,13 +1909,13 @@ async function proxyVideoStatus(payload) {
   const body = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
   const taskId = typeof body.task_id === "string" ? body.task_id.trim() : "";
   if (!taskId) {
-    return { status: 400, payload: { error: "缺少视频任务号。" } };
+    return { status: 400, payload: { error: "还没有找到这条视频任务，请重新生成一次。" } };
   }
 
   const baseUrl = (cleanEndpointText(body.base_url) || VIDEO_BASE_URL).replace(/\/+$/, "");
   const apiKey = typeof body.api_key === "string" && body.api_key.trim() ? body.api_key.trim() : VIDEO_API_KEY;
   if (!apiKey) {
-    return { status: 400, payload: { error: "请先填写 API Key。" } };
+    return { status: 400, payload: { error: "服务密钥还没有配置好，请先让管理员确认后台配置。" } };
   }
 
   const statusPath = cleanEndpointText(body.status_path);
@@ -1512,7 +1969,7 @@ const apiRoutes = [
     handler: async ({ body }) => {
       const firstFrameUrl = getVideoFirstFrameUrl(body);
       if (!firstFrameUrl || !isReadableVideoFirstFrameUrl(firstFrameUrl)) {
-        return createApiResponse(400, { error: "视频生成必须提交已确认首帧 image_url，且必须是 http(s) 或 data:image 地址；不能退化成纯文生视频。" });
+        return createApiResponse(400, { error: "请先确认首帧，再生成视频。" });
       }
       return proxyJson(OPENAI_VIDEO_GENERATIONS_PATH, buildVideoPayload(body), "video");
     },
@@ -1548,7 +2005,7 @@ function findApiRoute(method, pathname) {
       path: "/api/video/:taskId",
       handler: async () => {
         const taskId = decodeURIComponent(pathname.replace("/api/video/", ""));
-        if (!taskId) return createApiResponse(400, { error: "Missing task id" });
+        if (!taskId) return createApiResponse(400, { error: "还没有找到这条视频任务，请重新生成一次。" });
         return proxyVideoStatus({ task_id: taskId });
       },
     };
@@ -1565,7 +2022,7 @@ async function handleApiRequest(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
   const route = findApiRoute(req.method || "GET", url.pathname);
   if (!route) {
-    sendJson(res, 404, { error: "Not found" });
+    sendJson(res, 404, { error: "没有找到这个服务入口，请刷新页面后再试。" });
     return;
   }
 
@@ -1579,7 +2036,7 @@ const server = http.createServer(async (req, res) => {
     await handleApiRequest(req, res);
   } catch (error) {
     sendJson(res, 500, {
-      error: error instanceof Error ? error.message : "Unknown server error",
+      error: toPublicErrorMessage(error instanceof Error ? error.message : ""),
     });
   }
 });

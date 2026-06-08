@@ -1,5 +1,6 @@
 import {
   Check,
+  ChevronDown,
   ClipboardCheck,
   CloudUpload,
   Database,
@@ -26,6 +27,13 @@ import { useEffect, useMemo, useState } from "react";
 type StepId = "upload" | "firstFrame" | "video" | "qa";
 type MotionMode = "strict" | "balanced" | "creative";
 type VideoStatus = "idle" | "submitted" | "polling" | "succeeded" | "failed";
+type PromptPairMeta = {
+  sceneTitle: string;
+  sceneAnchor: string;
+  continuityLocks: string;
+  model: string;
+  upstreamUrl: string;
+};
 
 type UploadSlot = {
   id: string;
@@ -65,7 +73,24 @@ type HistoryItem = {
   type: "首帧" | "视频";
   title: string;
   time: string;
+  createdAt: string;
   status: "成功" | "失败" | "处理中";
+  productType?: string;
+  sceneTitle?: string;
+  scenePrompt?: string;
+  videoPrompt?: string;
+  model?: string;
+  aspectRatio?: string;
+  duration?: number;
+  motionMode?: MotionMode;
+  taskId?: string;
+  detailUrl?: string;
+  firstFrameUrl?: string;
+  videoUrl?: string;
+  productViewUrls?: string[];
+  supportImageUrls?: string[];
+  referenceVideoUrls?: string[];
+  error?: string;
 };
 
 type ProductAsset = {
@@ -106,8 +131,14 @@ type ProductPreset = {
 
 const STORAGE_KEY = "videoai.apiSettings";
 const HISTORY_STORAGE_KEY = "videoai.historyItems";
-const MAX_HISTORY_ITEMS = 60;
-const LOCAL_PROMPT_MODEL = "local-safety-draft";
+const HISTORY_ASSET_DB_NAME = "videoai.historyAssets";
+const HISTORY_ASSET_STORE_NAME = "assets";
+const HISTORY_ASSET_REF_PREFIX = "videoai-history-asset:";
+const MAX_HISTORY_ITEMS = 30;
+const HISTORY_ASSET_FIELDS = ["detailUrl", "firstFrameUrl", "videoUrl"] as const;
+const FIRST_FRAME_REFERENCE_MAX_EDGE = 1536;
+const FIRST_FRAME_REFERENCE_MAX_BYTES = 900_000;
+const FIRST_FRAME_REFERENCE_JPEG_QUALITY = 0.86;
 const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini";
 const DEFAULT_IMAGE_MODEL = "gpt-image-2";
 const DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-260128";
@@ -633,44 +664,6 @@ function createPresetSlots(productType: string): UploadSlot[] {
   });
 }
 
-function createDefaultScenePrompt(productType: string) {
-  if (productType === BULL_INFLATABLE_TYPE) {
-    return "明亮商场或超市通道，真人穿着上传四视图中的奶牛充气服，正面或轻微正面三分之二站立展示，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的 155-190cm 真人穿戴尺度、黑白斑、双角、粉色鼻口、粉色乳房、蹄套和轻到中度充气体型；橙色鼓风阀/进出气口/泵口只属于右后侧/背侧，背部拉链和白尾黑尖按背视图归位，看不见时自然隐藏；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
-  }
-  if (productType === SHARK_INFLATABLE_TYPE) {
-    return "明亮超市海鲜区，真人穿着上传四视图中的鲨鱼充气服，正面或轻微正面三分之二站在冰鲜鱼柜旁，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度：小号浅弧形横向梯形透明脸窗、偏青的柔和蓝色尼龙、偏扁偏软略微蔫皱的轻度欠充气体型，不能变成大矩形脸窗、高饱和亮蓝或圆鼓鼓的气模；橙色鼓风阀/进出气口/泵口只属于阀门侧腰，正面看不见时自然隐藏，不能挪到白肚、脸窗、拉链或尾鳍；保留薄尼龙/PVC 褶皱、缝线、拉链齿、阀门环和网格细节。";
-  }
-  if (productType === GRAY_MOUSE_INFLATABLE_TYPE) {
-    return "明亮便利店零食货架前，真人穿着四视图中的灰色老鼠充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像拿起奶酪味薯片时突然被价签吸引，露出无辜又好奇的表情。场景可以有趣，但灰色老鼠头脸、米色腹部、圆耳、突出鼻嘴、侧后方尾巴和真人穿戴的中低充气体型必须保持参考图；绿色鼓风阀/进出气口/泵口只属于后背/背侧，和背部拉链、尾巴根部保持位置关系，不能挪到腹部或脸部；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
-  }
-  if (productType === FROG_INFLATABLE_TYPE) {
-    return "明亮室内派对或办公室茶水间，真人穿着四视图中的青蛙充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像认真准备宣布下班却突然愣住。场景可以有梗，也可以有手持道具，但顶部凸眼、小号脸窗、大块黑色弧形嘴带、蓝色围巾、米色腹部、黑色斑点、蹼状手脚、可见鞋子和中低充气人体比例必须保持参考图；手持道具只能作为外部剧情道具，不能遮挡或替代脸窗、嘴带、围巾、蹼手、鞋子、阀门、拉链或身体轮廓；橙色鼓风阀/进出气口/泵口只属于后背黑色脊线/拉链附近，不能挪到腹部、围巾、脸窗或嘴带；保留薄尼龙/PVC 褶皱、缝线、拉链齿、阀门环和围巾边缘细节。";
-  }
-  if (productType === SUMO_INFLATABLE_TYPE) {
-    return "明亮办公室走廊或电梯口，真人穿着四视图中的相扑充气服，正面或轻微正面三分之二站立，全身入镜、双脚落地，像严肃准备和自动门进行一场相扑对决。场景可以恶搞，但米肉色身体、黑色腰带兜裆、顶部黑色发髻帽、胸线、肚脐、侧面宽 T 形和中低充气人体比例必须保持参考图；橙色鼓风阀/进出气口/泵口只属于背面/后侧，参考后阀辅助图保持与后腰带、拉链的间距，不能挪到正面肚子或兜裆布；保留薄尼龙/PVC 褶皱、缝线、拉链齿和阀门环细节。";
-  }
-  return `明亮电商短视频场景，真人穿着上传四视图中的${productType || "当前充气产品"}，正面或轻微正面三分之二站立展示，全身入镜、身体直立、双脚落地。场景只做背景，产品外形必须保持参考图的人体穿戴尺度、尺寸比例、组件位置和轻到中度充气体型；阀门、鼓风阀、进出气口、泵口、拉链、缝线和布料褶皱必须按四视图归位，看不见时隐藏，不能挪位、复制、换色或简化。`;
-}
-
-function createDefaultVideoActionPrompt(productType: string) {
-  if (productType === BULL_INFLATABLE_TYPE) {
-    return "奶牛充气服在首帧原场景里一本正经地准备营业，先慢慢抬起黑色蹄套像要打招呼，下一秒被身边的小道具吸引住，身体软乎乎左右晃两下，最后假装若无其事地定住形成冷幽默停顿。全程锁定首帧像素身份：黑白斑、双角、耳朵、粉色鼻口和乳房、黑色蹄套、尾巴、背部拉链与右后侧橙色阀门位置都不漂移。";
-  }
-  if (productType === SHARK_INFLATABLE_TYPE) {
-    return "鲨鱼充气服在首帧原场景里先装作很专业地巡视，手鳍慢半拍抬起来，突然被旁边道具或价签弄得愣住，身体像泄气又努力撑住一样软弹晃动半步，最后摆出无辜停顿，像“我不是鲨鱼我只是路过”。全程锁定首帧像素身份：小号浅弧形脸窗、柔和偏青蓝色、偏扁轻度欠充气体积、正面拉链、侧腰橙色阀门、尾鳍、鞋子和薄尼龙/PVC褶皱都不漂移。";
-  }
-  if (productType === GRAY_MOUSE_INFLATABLE_TYPE) {
-    return "灰色老鼠充气服在首帧原场景里先小心翼翼靠近道具，伸手动作突然停住，像被一个价签或袋子上的字问住了，身体僵硬两秒后轻轻缩手，又假装很淡定地点一下头。全程锁定首帧像素身份：圆耳、米色腹部、突出鼻嘴、尾巴、可见真人手/鞋、后背绿色阀门、背部拉链和薄尼龙/PVC褶皱都不漂移，不能重排双手或替换道具接触关系。";
-  }
-  if (productType === FROG_INFLATABLE_TYPE) {
-    return "青蛙充气服在首帧原场景里认真准备宣布什么，蹼手刚抬起就卡在半空，身体弹簧一样轻轻晃两下，接着对着旁边道具做一个无辜停顿，最后像忘词一样慢慢收回手。全程锁定首帧像素身份：顶部凸眼、小号脸窗、黑色弧形嘴带、蓝围巾、米色腹部、黑斑、蹼手、鞋子、后背橙色阀门、黑色脊线和拉链都不漂移。";
-  }
-  if (productType === SUMO_INFLATABLE_TYPE) {
-    return "相扑充气服在首帧原场景里摆出严肃对决姿势，先小幅下蹲蓄力，结果被自动门、价签或旁边道具打断，身体软软回弹一下，最后用过分认真的表情定住，像输给了空气。全程锁定首帧像素身份：米肉色身体、黑色腰带兜裆、发髻帽、肚脐、宽T形侧面、背面橙色阀门、后腰带、拉链和薄尼龙/PVC褶皱都不漂移。";
-  }
-  return `${productType || "当前充气产品"}在首帧原场景里先认真营业，突然被身边一个小道具或场景细节打断，身体软乎乎晃两下，做出一个无辜又滑稽的补救动作，最后定住形成短视频包袱。全程锁定首帧像素身份：尺寸、人体体型包络、外形轮廓、组件位置、阀门、拉链、尾部、色块、缝线和布料褶皱都不漂移。`;
-}
-
 const firstFrameReviewChecks = [
   {
     id: "human-body-envelope",
@@ -720,6 +713,28 @@ function createFirstFrameReviewState(): FirstFrameReviewState {
 
 function createPassedFirstFrameReviewState(): FirstFrameReviewState {
   return Object.fromEntries(firstFrameReviewChecks.map((check) => [check.id, "pass"])) as FirstFrameReviewState;
+}
+
+function createFirstFrameReviewFeedback(reviewState: FirstFrameReviewState) {
+  const failedChecks = firstFrameReviewChecks.filter((check) => reviewState[check.id] === "fail");
+  const passedChecks = firstFrameReviewChecks.filter((check) => reviewState[check.id] === "pass");
+  return {
+    mode: "targeted-first-frame-regeneration",
+    instruction:
+      "The first-frame prompt and scene are unchanged. Only correct the failed checklist items. Keep passed checklist items and all unmentioned areas as close as possible to the previous first frame.",
+    failed_checks: failedChecks.map((check) => ({
+      id: check.id,
+      label: check.label,
+      detail: check.detail,
+      critical: check.critical,
+    })),
+    passed_checks: passedChecks.map((check) => ({
+      id: check.id,
+      label: check.label,
+      detail: check.detail,
+      critical: check.critical,
+    })),
+  };
 }
 
 const defaultApiSettings: ApiSettings = {
@@ -829,7 +844,7 @@ function loadApiSettings(): ApiSettings {
       !merged.promptModel ||
       merged.promptModel === "gpt-4.1-mini" ||
       merged.promptModel === "gpt-5.5" ||
-      merged.promptModel === LOCAL_PROMPT_MODEL
+      merged.promptModel === "local-safety-draft"
     ) {
       merged.promptModel = defaultApiSettings.promptModel;
     }
@@ -839,6 +854,14 @@ function loadApiSettings(): ApiSettings {
     return merged;
   } catch {
     return defaultApiSettings;
+  }
+}
+
+function saveApiSettings(settings: ApiSettings) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Local storage can be full when users generate many large assets; the app should keep running.
   }
 }
 
@@ -854,6 +877,18 @@ function isHistoryItem(value: unknown): value is HistoryItem {
   );
 }
 
+function formatHistoryTime(date: Date) {
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 function loadHistoryItems(): HistoryItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -861,25 +896,149 @@ function loadHistoryItems(): HistoryItem[] {
     if (!saved) return [];
     const parsed = JSON.parse(saved);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isHistoryItem).slice(0, MAX_HISTORY_ITEMS);
+    const items = parsed
+      .filter(isHistoryItem)
+      .map((item) => ({ ...item, createdAt: item.createdAt || item.time }))
+      .slice(0, MAX_HISTORY_ITEMS);
+    const sanitized = items.map(sanitizeHistoryItemForStorage);
+    if (JSON.stringify(items) !== JSON.stringify(sanitized)) {
+      void Promise.all(items.map(writeHistoryItemAssets)).finally(() => saveHistoryItems(sanitized));
+    }
+    return sanitized;
   } catch {
+    try {
+      window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
     return [];
   }
 }
 
-function createHistoryItem(id: string, kind: "firstFrame" | "video", status: HistoryItem["status"]): HistoryItem {
+function createHistoryItem(
+  id: string,
+  kind: "firstFrame" | "video",
+  status: HistoryItem["status"],
+  detail: Partial<HistoryItem> = {},
+): HistoryItem {
   const now = new Date();
   return {
     id,
     type: kind === "firstFrame" ? "首帧" : "视频",
     title: kind === "firstFrame" ? "首帧生成" : "视频生成",
-    time: now.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+    time: formatHistoryTime(now),
+    createdAt: now.toISOString(),
     status,
+    ...detail,
   };
 }
 
 function upsertHistoryItem(items: HistoryItem[], item: HistoryItem): HistoryItem[] {
   return [item, ...items.filter((current) => current.id !== item.id)].slice(0, MAX_HISTORY_ITEMS);
+}
+
+function createHistoryAssetRef(id: string, field: (typeof HISTORY_ASSET_FIELDS)[number]) {
+  return `${HISTORY_ASSET_REF_PREFIX}${id}:${field}`;
+}
+
+function isHistoryAssetRef(value?: string) {
+  return typeof value === "string" && value.startsWith(HISTORY_ASSET_REF_PREFIX);
+}
+
+function isLargeInlineAsset(value?: string) {
+  return typeof value === "string" && value.startsWith("data:");
+}
+
+function openHistoryAssetDb() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(HISTORY_ASSET_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(HISTORY_ASSET_STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Open history asset storage failed"));
+  });
+}
+
+async function writeHistoryAsset(ref: string, value: string) {
+  if (typeof window === "undefined" || !window.indexedDB) return;
+  const db = await openHistoryAssetDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(HISTORY_ASSET_STORE_NAME, "readwrite");
+      transaction.objectStore(HISTORY_ASSET_STORE_NAME).put(value, ref);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error("Save history asset failed"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function readHistoryAsset(ref: string) {
+  if (typeof window === "undefined" || !window.indexedDB || !isHistoryAssetRef(ref)) return "";
+  const db = await openHistoryAssetDb();
+  try {
+    return await new Promise<string>((resolve) => {
+      const transaction = db.transaction(HISTORY_ASSET_STORE_NAME, "readonly");
+      const request = transaction.objectStore(HISTORY_ASSET_STORE_NAME).get(ref);
+      request.onsuccess = () => resolve(typeof request.result === "string" ? request.result : "");
+      request.onerror = () => resolve("");
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function writeHistoryItemAssets(item: HistoryItem) {
+  await Promise.all(
+    HISTORY_ASSET_FIELDS.map(async (field) => {
+      const value = item[field];
+      if (!isLargeInlineAsset(value)) return;
+      await writeHistoryAsset(createHistoryAssetRef(item.id, field), value || "");
+    }),
+  );
+}
+
+async function resolveHistoryItemAssets(item: HistoryItem): Promise<HistoryItem> {
+  const next = { ...item };
+  await Promise.all(
+    HISTORY_ASSET_FIELDS.map(async (field) => {
+      const value = next[field];
+      if (!isHistoryAssetRef(value)) return;
+      const resolved = await readHistoryAsset(value || "");
+      if (resolved) next[field] = resolved;
+    }),
+  );
+  return next;
+}
+
+function sanitizeHistoryItemForStorage(item: HistoryItem): HistoryItem {
+  const next = { ...item };
+  for (const field of HISTORY_ASSET_FIELDS) {
+    if (isLargeInlineAsset(next[field])) next[field] = createHistoryAssetRef(next.id, field);
+  }
+  next.productViewUrls = next.productViewUrls?.filter((url) => !isLargeInlineAsset(url));
+  next.supportImageUrls = next.supportImageUrls?.filter((url) => !isLargeInlineAsset(url));
+  return next;
+}
+
+function saveHistoryItems(items: HistoryItem[]) {
+  const storedItems = items.slice(0, MAX_HISTORY_ITEMS).map(sanitizeHistoryItemForStorage);
+  void Promise.all(items.slice(0, MAX_HISTORY_ITEMS).map(writeHistoryItemAssets)).catch(() => undefined);
+  try {
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(storedItems));
+  } catch (error) {
+    try {
+      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(storedItems.slice(0, 5)));
+    } catch {
+      try {
+        window.localStorage.removeItem(HISTORY_STORAGE_KEY);
+      } catch {
+        // Ignore storage cleanup failures.
+      }
+    }
+  }
 }
 
 function extractTaskId(data: unknown) {
@@ -963,7 +1122,11 @@ function extractImageUrl(data: unknown) {
   if (Array.isArray(dataValue)) {
     const first = dataValue[0] as Record<string, unknown> | undefined;
     if (typeof first?.url === "string") return first.url;
-    if (typeof first?.b64_json === "string") return `data:image/png;base64,${first.b64_json}`;
+    if (typeof first?.b64_json === "string") {
+      const mimeType = getBase64ImageMime(first.b64_json);
+      if (!mimeType) throw new Error("上游这次没有返回真正的图片，而是返回了网页验证内容。请稍后再试；如果连续出现，请让管理员更换图片上游。");
+      return `data:${mimeType};base64,${first.b64_json}`;
+    }
   }
   const dashScopeUrl = findUrlByKey(record.output, /^(image|url|image_url|imageUrl|result_url)$/i);
   if (dashScopeUrl) return dashScopeUrl;
@@ -974,22 +1137,85 @@ function extractImageUrl(data: unknown) {
   return "";
 }
 
+function getBase64ImageMime(base64: string) {
+  try {
+    const binary = atob(base64.slice(0, 64));
+    const bytes = Array.from(binary, (char) => char.charCodeAt(0));
+    if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+    if (bytes.length >= 12 && binary.slice(0, 4) === "RIFF" && binary.slice(8, 12) === "WEBP") return "image/webp";
+    if (/^GIF8[79]a/.test(binary.slice(0, 6))) return "image/gif";
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 function extractErrorMessage(data: unknown) {
-  if (!data || typeof data !== "object") return "接口请求失败";
+  if (!data || typeof data !== "object") return "这次请求没有成功，请稍后再试。";
   const record = data as Record<string, unknown>;
   const error = record.error;
-  if (typeof error === "string") return error;
+  if (typeof error === "string") return toUserMessage(error);
   if (error && typeof error === "object") {
     const errorRecord = error as Record<string, unknown>;
-    if (typeof errorRecord.message === "string") return errorRecord.message;
-    if (typeof errorRecord.code === "string") return errorRecord.code;
+    if (typeof errorRecord.message === "string") return toUserMessage(errorRecord.message);
+    if (typeof errorRecord.code === "string") return toUserMessage(errorRecord.code);
   }
-  if (typeof record.message === "string") return record.message;
-  if (typeof record.code === "string") return record.code;
+  if (typeof record.message === "string") return toUserMessage(record.message);
+  if (typeof record.code === "string") return toUserMessage(record.code);
   if (typeof record.raw === "string" && record.raw.includes("Error code 524")) {
-    return "上游接口处理超时，请稍后重试或改用异步任务接口。";
+    return "这次处理时间太久了，请稍后再试。";
   }
-  return "接口请求失败，请检查接口地址、路径、模型和图片参数。";
+  return "这次请求没有成功，请稍后再试；如果一直失败，请让管理员检查服务配置。";
+}
+
+function toUserMessage(message: string) {
+  const text = message.trim();
+  if (!text) return "这次请求没有成功，请稍后再试。";
+  if (/server_error|retry your request|An error occurred while processing your request/i.test(text)) {
+    const requestId =
+      text.match(/request ID\s+([0-9a-f-]{12,})/i)?.[1] ||
+      text.match(/request[_\s-]?id["']?\s*[:=]\s*["']?([0-9a-f-]{12,})/i)?.[1] ||
+      "";
+    return `上游服务这次内部处理失败，系统已经停止本次任务。可以直接重试一次${requestId ? `；请求编号：${requestId}` : ""}。`;
+  }
+  if (/InputTextSensitiveContentDetected|sensitive information|sensitive content|敏感/i.test(text)) {
+    return "这次视频描述被平台安全规则拦下了。可以把动作改得更日常一点，比如挥手、转身、停顿或轻轻晃动，再试一次。";
+  }
+  if (/api key|unauthorized|forbidden|not configured|missing key|请先填写 API Key/i.test(text)) {
+    return "服务密钥还没有配置好，请先让管理员确认后台配置。";
+  }
+  if (/insufficient_user_quota|余额|额度|预扣费|quota|credit/i.test(text)) {
+    return "当前视频服务余额不够了，请充值或换一个费用更低的模型后再试。";
+  }
+  if (/model_not_found|No available channel|没有找到模型|模型不存在|模型不可用|model .*not/i.test(text)) {
+    return "当前模型暂时不可用，请换一个模型，或让管理员确认模型名称。";
+  }
+  if (/上游图片服务连接失败|上游视频服务连接失败|首帧生成服务暂时连不上|视频生成服务暂时连不上/i.test(text)) {
+    return text;
+  }
+  if (/timeout|timed out|Error code 524|超时/i.test(text)) {
+    return "这次处理时间太久了，请稍后再试。";
+  }
+  if (/Failed to fetch|NetworkError|fetch failed|ECONNREFUSED|服务暂时连不上/i.test(text)) {
+    return "服务暂时连不上，请确认本地服务还在运行后再试。";
+  }
+  if (/非 JSON|non.?json|Not found|404|接口路径|路径/i.test(text)) {
+    return "服务地址可能配置不对，请让管理员检查接口地址。";
+  }
+  if (/Preset image unavailable|preset images failed/i.test(text)) {
+    return "本地预设图片没有加载成功，请刷新页面或重新选择产品。";
+  }
+  if (/image\/url|图片地址|image_url|b64_json/i.test(text)) {
+    return "这次没有拿到首帧图片结果，请稍后再试，或换一个首帧模型。";
+  }
+  if (/视频地址|任务号|video url|task id/i.test(text)) {
+    return "这次没有拿到视频结果，也没有拿到可查询的任务号，请重新生成一次。";
+  }
+  if (/Pair prompt model did not return parseable JSON|提示词模型没有返回|prompt model/i.test(text)) {
+    return "这次没有拿到完整提示词，请再点一次骰子。";
+  }
+  return text;
 }
 
 function readFileAsDataUrl(file: File) {
@@ -1010,12 +1236,70 @@ function readBlobAsDataUrl(blob: Blob) {
   });
 }
 
+function estimateDataUrlBytes(dataUrl: string) {
+  const match = dataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+  if (!match) return 0;
+  const base64 = match[1];
+  return Math.floor((base64.length * 3) / 4) - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
+}
+
+function loadImageFromDataUrl(dataUrl: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Reference image could not be prepared."));
+    image.src = dataUrl;
+  });
+}
+
+async function prepareFirstFrameReferenceDataUrl(dataUrl: string) {
+  if (!dataUrl.startsWith("data:image/")) return dataUrl;
+  const image = await loadImageFromDataUrl(dataUrl);
+  const rawBytes = estimateDataUrlBytes(dataUrl);
+  const maxEdge = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height);
+  if (maxEdge <= FIRST_FRAME_REFERENCE_MAX_EDGE && rawBytes <= FIRST_FRAME_REFERENCE_MAX_BYTES) return dataUrl;
+
+  const scale = Math.min(1, FIRST_FRAME_REFERENCE_MAX_EDGE / Math.max(1, maxEdge));
+  const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+  const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return dataUrl;
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", FIRST_FRAME_REFERENCE_JPEG_QUALITY);
+}
+
+async function prepareFirstFrameImageList(items: unknown) {
+  if (!Array.isArray(items)) return items;
+  return Promise.all(
+    items.map((item) =>
+      typeof item === "string" ? prepareFirstFrameReferenceDataUrl(item) : item,
+    ),
+  );
+}
+
+async function prepareFirstFramePayloadForSubmit(payload: Record<string, unknown>) {
+  return {
+    ...payload,
+    image_urls: await prepareFirstFrameImageList(payload.image_urls),
+    support_image_urls: await prepareFirstFrameImageList(payload.support_image_urls),
+    previous_first_frame_url:
+      typeof payload.previous_first_frame_url === "string"
+        ? await prepareFirstFrameReferenceDataUrl(payload.previous_first_frame_url)
+        : payload.previous_first_frame_url,
+  };
+}
+
 async function loadPresetSlotDataUrls(preset: NonNullable<ReturnType<typeof getProductPreset>>) {
   return Promise.all(
     preset.views.map(async (view) => {
       const response = await fetch(view.localUrl);
       if (!response.ok) throw new Error(`Preset image unavailable: ${view.localUrl}`);
-      const dataUrl = await readBlobAsDataUrl(await response.blob());
+      const dataUrl = await prepareFirstFrameReferenceDataUrl(await readBlobAsDataUrl(await response.blob()));
       return { slotId: view.slotId, dataUrl };
     }),
   );
@@ -1027,7 +1311,7 @@ async function loadPresetSupportDataUrls(preset: NonNullable<ReturnType<typeof g
       try {
         const response = await fetch(view.localUrl);
         if (!response.ok) return "";
-        return readBlobAsDataUrl(await response.blob());
+        return prepareFirstFrameReferenceDataUrl(await readBlobAsDataUrl(await response.blob()));
       } catch {
         return "";
       }
@@ -1050,12 +1334,14 @@ export function App() {
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>(() => loadHistoryItems());
+  const [pendingHistoryItem, setPendingHistoryItem] = useState<HistoryItem | null>(null);
+  const [historyError, setHistoryError] = useState("");
   const [productAssets] = useState<ProductAsset[]>(productAssetPlan);
   const [duration, setDuration] = useState(8);
   const [aspectRatio, setAspectRatio] = useState("9:16");
   const [motionMode, setMotionMode] = useState<MotionMode>("strict");
-  const [scenePrompt, setScenePrompt] = useState(() => createDefaultScenePrompt(SHARK_INFLATABLE_TYPE));
-  const [videoActionPrompt, setVideoActionPrompt] = useState(() => createDefaultVideoActionPrompt(SHARK_INFLATABLE_TYPE));
+  const [scenePrompt, setScenePrompt] = useState("");
+  const [videoActionPrompt, setVideoActionPrompt] = useState("");
   const [approvedFirstFrameUrl, setApprovedFirstFrameUrl] = useState("");
   const [firstFrameApproved, setFirstFrameApproved] = useState(false);
   const [firstFrameReviewState, setFirstFrameReviewState] = useState<FirstFrameReviewState>(() => createFirstFrameReviewState());
@@ -1066,14 +1352,21 @@ export function App() {
   const [videoUrl, setVideoUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testing, setTesting] = useState<"image" | "video" | "">("");
-  const [suggestingPrompt, setSuggestingPrompt] = useState<"firstFrame" | "video" | "">("");
+  const [suggestingPrompt, setSuggestingPrompt] = useState<"pair" | "">("");
+  const [promptPairMeta, setPromptPairMeta] = useState<PromptPairMeta>({
+    sceneTitle: "",
+    sceneAnchor: "",
+    continuityLocks: "",
+    model: DEFAULT_PROMPT_MODEL,
+    upstreamUrl: "",
+  });
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(apiSettings));
+    saveApiSettings(apiSettings);
   }, [apiSettings]);
 
   useEffect(() => {
-    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyItems.slice(0, MAX_HISTORY_ITEMS)));
+    saveHistoryItems(historyItems);
   }, [historyItems]);
 
   useEffect(() => {
@@ -1112,6 +1405,13 @@ export function App() {
     };
   }, [costumeType]);
 
+  useEffect(() => {
+    if (!pendingHistoryItem) return;
+    if (pendingHistoryItem.productType && pendingHistoryItem.productType !== costumeType) return;
+    applyHistoryItemToCurrentFlow(pendingHistoryItem);
+    setPendingHistoryItem(null);
+  }, [costumeType, pendingHistoryItem]);
+
   const allLocksConfirmed = lockNodes.every((node) => node.confirmed);
   const autoLockedNodes = useMemo(() => lockNodes.map((node) => ({ ...node, confirmed: true })), [lockNodes]);
   const failedFirstFrameReviewChecks = firstFrameReviewChecks.filter((check) => firstFrameReviewState[check.id] === "fail");
@@ -1122,8 +1422,33 @@ export function App() {
   const currentReferenceVideos = currentProductPreset?.referenceVideos || [];
   const currentSupportViewCount = currentProductPreset?.supportViews?.length || 0;
   const uploadReady = requiredUrls.length === slots.length;
-  const firstFrameReady = uploadReady && allLocksConfirmed;
+  const promptsReady = Boolean(scenePrompt.trim()) && Boolean(videoActionPrompt.trim());
+  const firstFrameReady = uploadReady && allLocksConfirmed && promptsReady;
   const videoReady = firstFrameReady && Boolean(approvedFirstFrameUrl.trim()) && firstFrameApproved;
+
+  function createHistoryDetail(
+    kind: "firstFrame" | "video",
+    status: HistoryItem["status"],
+    detail: Partial<HistoryItem> = {},
+  ) {
+    return {
+      productType: costumeType,
+      sceneTitle: promptPairMeta.sceneTitle || "",
+      scenePrompt,
+      videoPrompt: videoActionPrompt,
+      model: kind === "firstFrame" ? apiSettings.imageModel : apiSettings.videoModel,
+      aspectRatio,
+      duration: kind === "video" ? duration : undefined,
+      motionMode: kind === "video" ? motionMode : undefined,
+      firstFrameUrl: approvedFirstFrameUrl || undefined,
+      videoUrl: kind === "video" ? videoUrl || undefined : undefined,
+      productViewUrls: slots.map((slot) => slot.localUrl).filter(Boolean),
+      supportImageUrls,
+      referenceVideoUrls: currentReferenceVideos.map((video) => video.localUrl),
+      ...detail,
+      status,
+    };
+  }
 
   const completedSteps: Record<StepId, boolean> = {
     upload: uploadReady,
@@ -1134,10 +1459,10 @@ export function App() {
 
   const motionText =
     motionMode === "strict"
-      ? "0-8 degrees rotation, tiny bounce, no new camera angle, no scene cut."
+      ? "Controlled visible comedy beats: one clear arm gesture, a small recoil or elastic wobble, and a freeze-pause twist; keep camera fixed, no scene cut, no product redesign."
       : motionMode === "balanced"
-        ? "Up to 15 degrees rotation, one small step, simple funny gesture."
-        : "More playful motion, but still preserve every locked product node.";
+        ? "Readable ecommerce comedy motion: one small half-step, prop reaction, elastic wobble, and a clear pause; preserve the approved first-frame product."
+        : "More playful comedy timing with a visible prop gag or reversal, while still preserving every locked product node.";
 
   const firstFramePayload = {
     model: apiSettings.imageModel,
@@ -1221,7 +1546,7 @@ export function App() {
     const updateSlot = (slot: UploadSlot): UploadSlot =>
       slot.id === id ? { ...slot, file, fileName: file.name, localUrl, dataUrl: "", source: "manual" } : slot;
     setSlots((current) => current.map(updateSlot));
-    const dataUrl = await readFileAsDataUrl(file);
+    const dataUrl = await prepareFirstFrameReferenceDataUrl(await readFileAsDataUrl(file));
     const updateDataUrl = (slot: UploadSlot) => (slot.id === id ? { ...slot, dataUrl } : slot);
     setSlots((current) => current.map(updateDataUrl));
   }
@@ -1234,8 +1559,15 @@ export function App() {
     invalidateGeneratedOutputs();
     setCostumeType(value);
     setLockNodes(getProductLockNodes(value));
-    setScenePrompt(createDefaultScenePrompt(value));
-    setVideoActionPrompt(createDefaultVideoActionPrompt(value));
+    setScenePrompt("");
+    setVideoActionPrompt("");
+    setPromptPairMeta({
+      sceneTitle: "",
+      sceneAnchor: "",
+      continuityLocks: "",
+      model: apiSettings.promptModel || DEFAULT_PROMPT_MODEL,
+      upstreamUrl: "",
+    });
     setActiveStep("upload");
   }
 
@@ -1256,8 +1588,8 @@ export function App() {
     if (activeStep !== "upload") setActiveStep("firstFrame");
   }
 
-  async function requestPromptSuggestion(kind: "firstFrame" | "video") {
-    setSuggestingPrompt(kind);
+  async function requestPromptPairSuggestion() {
+    setSuggestingPrompt("pair");
     setFirstFrameError("");
     setVideoError("");
     try {
@@ -1266,10 +1598,10 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: apiSettings.promptModel,
-          kind,
+          kind: "pair",
           product_type: costumeType,
-          current_prompt: kind === "firstFrame" ? scenePrompt : videoActionPrompt,
-          scene_prompt: scenePrompt,
+          current_first_frame_prompt: scenePrompt,
+          current_video_prompt: videoActionPrompt,
           reference_video_count: currentReferenceVideos.length,
           support_image_count: currentSupportViewCount,
           locked_nodes: lockNodes.map(({ code, label, detail, confidence, critical }) => ({
@@ -1283,23 +1615,25 @@ export function App() {
       });
       const data: unknown = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(extractErrorMessage(data));
-      const nextPrompt =
-        data && typeof data === "object" && typeof (data as Record<string, unknown>).prompt === "string"
-          ? ((data as Record<string, unknown>).prompt as string).trim()
-          : "";
-      if (!nextPrompt) throw new Error("提示词接口已返回，但没有找到 prompt 文本。");
-      if (kind === "firstFrame") {
-        updateScenePrompt(nextPrompt);
-        setFirstFrameError("已生成首帧提示词。");
-      } else {
-        invalidateVideoOutputs();
-        setVideoActionPrompt(nextPrompt);
-        setVideoError("已生成视频提示词。");
-      }
+      const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+      if (record.localFallback) throw new Error("提示词没有由模型生成成功，请稍后再点一次骰子。");
+      const firstFramePrompt = typeof record.firstFramePrompt === "string" ? record.firstFramePrompt.trim() : "";
+      const nextVideoPrompt = typeof record.videoPrompt === "string" ? record.videoPrompt.trim() : "";
+      if (!firstFramePrompt || !nextVideoPrompt) throw new Error("这次没有拿到完整提示词，请再点一次骰子。");
+      invalidateGeneratedOutputs();
+      setScenePrompt(firstFramePrompt);
+      setVideoActionPrompt(nextVideoPrompt);
+      setPromptPairMeta({
+        sceneTitle: typeof record.sceneTitle === "string" ? record.sceneTitle.trim() : "",
+        sceneAnchor: typeof record.sceneAnchor === "string" ? record.sceneAnchor.trim() : "",
+        continuityLocks: typeof record.continuityLocks === "string" ? record.continuityLocks.trim() : "",
+        model: typeof record.model === "string" && record.model.trim() ? record.model.trim() : apiSettings.promptModel || DEFAULT_PROMPT_MODEL,
+        upstreamUrl: typeof record.upstreamUrl === "string" ? record.upstreamUrl.trim() : "",
+      });
+      setFirstFrameError("首帧和视频提示词已一起更新。");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "提示词生成失败";
-      if (kind === "firstFrame") setFirstFrameError(message);
-      if (kind === "video") setVideoError(message);
+      const message = error instanceof Error ? toUserMessage(error.message) : "这次没有拿到提示词，请再试一次。";
+      setFirstFrameError(message);
     } finally {
       setSuggestingPrompt("");
     }
@@ -1356,13 +1690,46 @@ export function App() {
 
   function approveFirstFrameAndOpenVideoStep() {
     if (!approvedFirstFrameUrl.trim()) {
-      setFirstFrameError("请先生成首帧，再一键全部通过。");
+      setFirstFrameError("请先生成首帧，再通过首帧进入视频设置。");
       return;
     }
     setFirstFrameReviewState(createPassedFirstFrameReviewState());
     setFirstFrameApproved(true);
-    setFirstFrameError("已一键全部通过，请在视频页确认或修改提示词后手动生成。");
     setActiveStep("video");
+    setFirstFrameError("首帧已通过，请在视频页确认模型、参数和动作强度后手动生成。");
+  }
+
+  function applyHistoryItemToCurrentFlow(item: HistoryItem) {
+    if (item.scenePrompt) setScenePrompt(item.scenePrompt);
+    if (item.videoPrompt) setVideoActionPrompt(item.videoPrompt);
+    if (item.aspectRatio) setAspectRatio(item.aspectRatio);
+    if (item.duration) setDuration(item.duration);
+    if (item.motionMode) setMotionMode(item.motionMode);
+    if (item.taskId) setVideoTaskId(item.taskId);
+    if (item.firstFrameUrl) setApprovedFirstFrameUrl(item.firstFrameUrl);
+    if (item.videoUrl) setVideoUrl(item.videoUrl);
+    setFirstFrameApproved(Boolean(item.videoUrl));
+    setVideoStatus(item.videoUrl ? "succeeded" : item.type === "视频" && item.status === "处理中" ? "polling" : "idle");
+    setFirstFrameReviewState(item.firstFrameUrl ? createPassedFirstFrameReviewState() : createFirstFrameReviewState());
+    setFirstFrameError(item.firstFrameUrl ? "已从历史记录载入首帧资产。" : "");
+    setVideoError(item.videoUrl ? "已从历史记录载入视频资产。" : item.error || "");
+    setActiveStep(item.videoUrl ? "qa" : "firstFrame");
+  }
+
+  async function openHistoryItem(item: HistoryItem) {
+    const resolvedItem = await resolveHistoryItemAssets(item);
+    if (isHistoryAssetRef(resolvedItem.firstFrameUrl) || isHistoryAssetRef(resolvedItem.videoUrl) || isHistoryAssetRef(resolvedItem.detailUrl)) {
+      setHistoryError("这条历史记录的图片或视频还在本机资产库里恢复中，请稍后再试一次。");
+      return;
+    }
+    setHistoryError("");
+    setHistoryOpen(false);
+    if (resolvedItem.productType && resolvedItem.productType !== costumeType) {
+      setPendingHistoryItem(resolvedItem);
+      setCostumeType(resolvedItem.productType);
+      return;
+    }
+    applyHistoryItemToCurrentFlow(resolvedItem);
   }
 
   async function regenerateFirstFrameFromReview() {
@@ -1370,20 +1737,30 @@ export function App() {
       setFirstFrameError("请先生成首帧，再进入重新生成。");
       return;
     }
-    if (!allFirstFrameReviewChecksResolved) {
-      setFirstFrameError("请先把 6 项都选择为正确或错误，再进入重新生成。");
-      return;
-    }
     if (!hasFailedFirstFrameReviewChecks) {
-      setFirstFrameError("当前没有错误项；如果首帧没问题，请点击一键全部通过。");
+      setFirstFrameError("当前没有错误项；如果首帧没问题，请点击通过首帧进入视频设置。");
       return;
     }
     setFirstFrameApproved(false);
     setActiveStep("firstFrame");
-    await callBackend("firstFrame");
+    const previousFirstFrameUrl = approvedFirstFrameUrl;
+    await callBackend("firstFrame", {
+      ...firstFramePayload,
+      previous_first_frame_url: previousFirstFrameUrl,
+      prompt_unchanged: true,
+      review_feedback: createFirstFrameReviewFeedback(firstFrameReviewState),
+    });
   }
 
-  async function callBackend(kind: "firstFrame" | "video") {
+  async function callBackend(kind: "firstFrame" | "video", firstFramePayloadOverride?: Record<string, unknown>) {
+    if (kind === "firstFrame" && !scenePrompt.trim()) {
+      setFirstFrameError("请先点击骰子生成首帧和视频提示词，再生成首帧。");
+      return;
+    }
+    if (kind === "video" && !videoActionPrompt.trim()) {
+      setVideoError("请先在首帧页用骰子生成视频提示词，再生成视频。");
+      return;
+    }
     setIsSubmitting(true);
     setFirstFrameError("");
     setVideoError("");
@@ -1398,10 +1775,14 @@ export function App() {
       setVideoStatus("submitted");
     }
     try {
+      const requestPayload =
+        kind === "firstFrame"
+          ? await prepareFirstFramePayloadForSubmit(firstFramePayloadOverride || firstFramePayload)
+          : videoPayload;
       const response = await fetch(kind === "firstFrame" ? "/api/first-frame" : "/api/video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(kind === "firstFrame" ? firstFramePayload : videoPayload),
+        body: JSON.stringify(requestPayload),
       });
       const data: unknown = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -1411,7 +1792,7 @@ export function App() {
       const imageUrl = kind === "firstFrame" ? extractImageUrl(data) : "";
       if (kind === "firstFrame") {
         if (!imageUrl) {
-          throw new Error("接口已返回，但没有找到图片地址。请检查模型是否返回 image/url 字段。");
+          throw new Error("这次没有拿到首帧图片，请稍后再试，或换一个首帧模型。");
         }
         setApprovedFirstFrameUrl(imageUrl);
         setFirstFrameApproved(false);
@@ -1428,28 +1809,38 @@ export function App() {
         } else if (newTaskId) {
           setVideoTaskId(newTaskId);
           setVideoStatus("polling");
-          setVideoError(`任务已提交：${newTaskId}`);
+          setVideoError(`视频已经开始生成，任务号是 ${newTaskId}。`);
         } else {
           setVideoStatus("failed");
-          throw new Error("接口已返回，但没有找到视频地址或任务号。");
+          throw new Error("这次没有拿到视频结果，也没有拿到可查询的任务号，请重新生成一次。");
         }
       }
       const nextHistoryStatus: HistoryItem["status"] =
         kind === "firstFrame" || videoStatus === "succeeded" || Boolean(extractVideoUrl(data)) ? "成功" : "处理中";
+      const historyDetail = createHistoryDetail(kind, nextHistoryStatus, {
+        taskId: newTaskId || undefined,
+        detailUrl: kind === "firstFrame" ? imageUrl : extractVideoUrl(data),
+        firstFrameUrl: kind === "firstFrame" ? imageUrl : approvedFirstFrameUrl || undefined,
+        videoUrl: kind === "video" ? extractVideoUrl(data) || undefined : undefined,
+      });
       setHistoryItems((current) =>
-        upsertHistoryItem(current, createHistoryItem(newTaskId || `LOCAL-${Date.now()}`, kind, nextHistoryStatus)),
+        upsertHistoryItem(current, createHistoryItem(newTaskId || `LOCAL-${Date.now()}`, kind, nextHistoryStatus, historyDetail)),
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "接口请求失败";
+      const message = error instanceof Error ? toUserMessage(error.message) : "这次请求没有成功，请稍后再试。";
       if (kind === "firstFrame") {
         setFirstFrameError(message);
-        setHistoryItems((current) => upsertHistoryItem(current, createHistoryItem(`LOCAL-${Date.now()}`, kind, "失败")));
+        setHistoryItems((current) =>
+          upsertHistoryItem(current, createHistoryItem(`LOCAL-${Date.now()}`, kind, "失败", createHistoryDetail(kind, "失败", { error: message }))),
+        );
       }
       if (kind === "video") {
         setVideoStatus("failed");
         setVideoError(message);
         const failedId = videoTaskId || `LOCAL-${Date.now()}`;
-        setHistoryItems((current) => upsertHistoryItem(current, createHistoryItem(failedId, kind, "失败")));
+        setHistoryItems((current) =>
+          upsertHistoryItem(current, createHistoryItem(failedId, kind, "失败", createHistoryDetail(kind, "失败", { taskId: videoTaskId || undefined, error: message }))),
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -1483,13 +1874,13 @@ export function App() {
         const nextVideoUrl = extractVideoUrl(data);
         if (nextVideoUrl || status === "SUCCEEDED" || status === "SUCCESS") {
           if (!nextVideoUrl) {
-            throw new Error("任务已完成，但没有返回视频地址。");
+            throw new Error("视频已完成，但暂时没有拿到播放地址，请稍后再查一次。");
           }
           setVideoUrl(nextVideoUrl);
           setVideoStatus("succeeded");
-          setVideoError("视频生成成功");
+          setVideoError("视频生成好了。");
           setHistoryItems((current) =>
-            current.map((item) => (item.id === videoTaskId ? { ...item, status: "成功" } : item)),
+            current.map((item) => (item.id === videoTaskId ? { ...item, status: "成功", detailUrl: nextVideoUrl } : item)),
           );
           setActiveStep("qa");
           return;
@@ -1499,14 +1890,14 @@ export function App() {
           throw new Error(extractErrorMessage(data));
         }
 
-        setVideoError(`生成中：${status || "等待上游返回状态"}（${attempts}）`);
+        setVideoError(`视频还在生成中，已检查 ${attempts} 次。`);
         if (!stopped) timer = window.setTimeout(pollVideoStatus, 3500);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "视频状态查询失败";
+        const message = error instanceof Error ? toUserMessage(error.message) : "暂时查不到视频进度，请稍后再试。";
         setVideoStatus("failed");
         setVideoError(message);
         setHistoryItems((current) =>
-          current.map((item) => (item.id === videoTaskId ? { ...item, status: "失败" } : item)),
+          current.map((item) => (item.id === videoTaskId ? { ...item, status: "失败", error: message } : item)),
         );
       }
     }
@@ -1532,11 +1923,11 @@ export function App() {
       if (!response.ok) {
         throw new Error(extractErrorMessage(data));
       }
-      const message = kind === "image" ? "图片接口和模型可用。" : "视频接口和模型可用。";
+      const message = kind === "image" ? "首帧服务连接正常。" : "视频服务连接正常。";
       if (kind === "image") setFirstFrameError(message);
       if (kind === "video") setVideoError(message);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "接口测试失败";
+      const message = error instanceof Error ? toUserMessage(error.message) : "服务测试没有通过，请稍后再试。";
       if (kind === "image") setFirstFrameError(message);
       if (kind === "video") setVideoError(message);
     } finally {
@@ -1613,7 +2004,7 @@ export function App() {
             onClick={() => setHistoryOpen(true)}
           >
             <Database size={16} />
-            轻后台
+            历史记录
             {historyItems.length > 0 && <span className="rounded-md bg-[#e6f5f6] px-2 py-0.5 text-[11px]">{historyItems.length}</span>}
           </button>
         </motion.aside>
@@ -1643,6 +2034,9 @@ export function App() {
                 <FirstFrameStep
                   prompt={scenePrompt}
                   setPrompt={updateScenePrompt}
+                  videoPrompt={videoActionPrompt}
+                  setVideoPrompt={updateVideoActionPrompt}
+                  promptMeta={promptPairMeta}
                   apiSettings={apiSettings}
                   updateApiSettings={updateApiSettings}
                   aspectRatio={aspectRatio}
@@ -1661,15 +2055,13 @@ export function App() {
                   error={firstFrameError}
                   canGenerate={firstFrameReady}
                   isSubmitting={isSubmitting}
-                  isSuggesting={suggestingPrompt === "firstFrame"}
-                  onSuggestPrompt={() => requestPromptSuggestion("firstFrame")}
+                  isSuggesting={suggestingPrompt === "pair"}
+                  onSuggestPrompt={requestPromptPairSuggestion}
                   onGenerate={() => callBackend("firstFrame")}
                 />
               )}
               {activeStep === "video" && (
                 <VideoStep
-                  prompt={videoActionPrompt}
-                  setPrompt={updateVideoActionPrompt}
                   apiSettings={apiSettings}
                   updateApiSettings={updateApiSettings}
                   duration={duration}
@@ -1678,7 +2070,6 @@ export function App() {
                   setMotionMode={setMotionMode}
                   canGenerate={videoReady}
                   isSubmitting={isSubmitting}
-                  isSuggesting={suggestingPrompt === "video"}
                   isTesting={testing === "video"}
                   error={videoError}
                   aspectRatio={aspectRatio}
@@ -1687,7 +2078,6 @@ export function App() {
                   statusText={videoStatusText}
                   taskId={videoTaskId}
                   videoUrl={videoUrl}
-                  onSuggestPrompt={() => requestPromptSuggestion("video")}
                   onGenerate={() => callBackend("video")}
                   onTest={() => testApi("video")}
                 />
@@ -1701,9 +2091,14 @@ export function App() {
         <HistoryDrawer
           items={historyItems}
           products={productAssets}
+          error={historyError}
           onClose={() => setHistoryOpen(false)}
-          onClear={() => setHistoryItems([])}
+          onClear={() => {
+            setHistoryError("");
+            setHistoryItems([]);
+          }}
           onRemove={(id) => setHistoryItems((current) => current.filter((item) => item.id !== id))}
+          onOpenItem={openHistoryItem}
         />
       )}
     </div>
@@ -1801,6 +2196,9 @@ function UploadStep(props: {
 function FirstFrameStep(props: {
   prompt: string;
   setPrompt: (value: string) => void;
+  videoPrompt: string;
+  setVideoPrompt: (value: string) => void;
+  promptMeta: PromptPairMeta;
   apiSettings: ApiSettings;
   updateApiSettings: (patch: Partial<ApiSettings>) => void;
   aspectRatio: string;
@@ -1829,25 +2227,40 @@ function FirstFrameStep(props: {
       <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意。人体体型包络、尺寸、比例、轮廓必须接近四视图，不能变成巨大圆顶、桶状身体、站立气球或吉祥物外壳；阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
       <div className="two-col">
         <div className="stack">
-          <div className="scenario-card prompt-card">
+          <div className="scenario-card prompt-card prompt-pair-card">
             <div className="prompt-label-row">
-              <span>生成首帧提示词</span>
+              <span>同步提示词</span>
               <button
                 className="dice-action"
                 type="button"
-                title="自动生成首帧提示词"
-                aria-label="自动生成首帧提示词"
+                title="同步随机首帧和视频提示词"
+                aria-label="同步随机首帧和视频提示词"
                 disabled={props.isSuggesting}
                 onClick={props.onSuggestPrompt}
               >
                 {props.isSuggesting ? <LoaderCircle className="spin" size={16} /> : <Dices size={17} />}
               </button>
             </div>
-            <textarea
-              value={props.prompt}
-              onChange={(event) => props.setPrompt(event.target.value)}
-              placeholder="只写场景和气氛，例如：超市海鲜区、办公室摸鱼、地铁通勤..."
-            />
+            {props.promptMeta.sceneAnchor && <p className="prompt-scene-anchor">{props.promptMeta.sceneAnchor}</p>}
+            <div className="prompt-pair-grid">
+              <label>
+                <span>首帧提示词</span>
+                <textarea
+                  value={props.prompt}
+                  onChange={(event) => props.setPrompt(event.target.value)}
+                  placeholder="点击骰子生成"
+                />
+              </label>
+              <label>
+                <span>视频提示词</span>
+                <textarea
+                  value={props.videoPrompt}
+                  onChange={(event) => props.setVideoPrompt(event.target.value)}
+                  placeholder="点击骰子生成"
+                />
+              </label>
+            </div>
+            {props.promptMeta.continuityLocks && <p className="prompt-continuity">{props.promptMeta.continuityLocks}</p>}
           </div>
           <div className="first-frame-review">
             {props.productViews.map((slot) => (
@@ -1907,9 +2320,9 @@ function FirstFrameStep(props: {
                     onClick={props.onApproveAllAndGenerate}
                   >
                     {props.isSubmitting ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}
-                    一键全部通过
+                    通过首帧，进入视频设置
                   </button>
-                  {props.allReviewChecksResolved && props.hasFailedReviewChecks && (
+                  {props.hasFailedReviewChecks && (
                     <button
                       className="secondary-action compact-action"
                       type="button"
@@ -1917,7 +2330,7 @@ function FirstFrameStep(props: {
                       onClick={props.onRegenerate}
                     >
                       {props.isSubmitting ? <LoaderCircle className="spin" size={15} /> : <Wand2 size={15} />}
-                      进入重新生成
+                      按错误项重新生成首帧
                     </button>
                   )}
                 </div>
@@ -1980,7 +2393,6 @@ function FirstFrameStep(props: {
             清晰度
             <div className="pill-grid">
               <button type="button" className="active">1080p</button>
-              <button type="button">4K UHD</button>
             </div>
           </label>
           <label>
@@ -2006,6 +2418,9 @@ function FirstFrameStep(props: {
             </button>
           )}
           {props.error && <div className={cn("field-error", props.error.includes("成功") && "success")}>{props.error}</div>}
+          {!props.canGenerate && !props.approvedUrl && (
+            <div className="field-hint">请先点击骰子生成首帧和视频提示词，再生成首帧。</div>
+          )}
         </div>
       </div>
     </section>
@@ -2013,8 +2428,6 @@ function FirstFrameStep(props: {
 }
 
 function VideoStep(props: {
-  prompt: string;
-  setPrompt: (value: string) => void;
   apiSettings: ApiSettings;
   updateApiSettings: (patch: Partial<ApiSettings>) => void;
   duration: number;
@@ -2023,7 +2436,6 @@ function VideoStep(props: {
   setMotionMode: (value: MotionMode) => void;
   canGenerate: boolean;
   isSubmitting: boolean;
-  isSuggesting: boolean;
   isTesting: boolean;
   error: string;
   aspectRatio: string;
@@ -2032,7 +2444,6 @@ function VideoStep(props: {
   statusText: string;
   taskId: string;
   videoUrl: string;
-  onSuggestPrompt: () => void;
   onGenerate: () => void;
   onTest: () => void;
 }) {
@@ -2067,37 +2478,9 @@ function VideoStep(props: {
               </div>
             )}
           </div>
-          <div className="scenario-card prompt-card">
-            <div className="prompt-label-row">
-              <span>生成视频提示词</span>
-              <button
-                className="dice-action"
-                type="button"
-                title="自动生成视频提示词"
-                aria-label="自动生成视频提示词"
-                disabled={props.isSuggesting}
-                onClick={props.onSuggestPrompt}
-              >
-                {props.isSuggesting ? <LoaderCircle className="spin" size={16} /> : <Dices size={17} />}
-              </button>
-            </div>
-            <textarea
-              value={props.prompt}
-              onChange={(event) => props.setPrompt(event.target.value)}
-              placeholder="写你希望视频里发生什么动作，例如：慢慢转身、挥手展示、递出产品、走近镜头..."
-            />
-          </div>
         </div>
         <div className="parameter-panel">
           <h3>视频参数</h3>
-          <label>
-            提示词模型
-            <input
-              value={props.apiSettings.promptModel}
-              onChange={(event) => props.updateApiSettings({ promptModel: event.target.value })}
-              placeholder={DEFAULT_PROMPT_MODEL}
-            />
-          </label>
           <label>
             视频模型
             <select value={props.apiSettings.videoModel} onChange={(event) => props.updateApiSettings({ videoModel: event.target.value })}>
@@ -2233,17 +2616,20 @@ function StageHeader(props: { eyebrow: string; title: string }) {
 function HistoryDrawer(props: {
   items: HistoryItem[];
   products: ProductAsset[];
+  error: string;
   onClose: () => void;
   onClear: () => void;
   onRemove: (id: string) => void;
+  onOpenItem: (item: HistoryItem) => Promise<void>;
 }) {
+  const [expandedId, setExpandedId] = useState(props.items[0]?.id || "");
   return (
-    <div className="history-backdrop" role="dialog" aria-modal="true" aria-label="轻后台">
-      <button className="history-scrim" aria-label="关闭轻后台" onClick={props.onClose} />
+    <div className="history-backdrop" role="dialog" aria-modal="true" aria-label="历史记录">
+      <button className="history-scrim" aria-label="关闭历史记录" onClick={props.onClose} />
       <aside className="history-drawer">
         <div className="history-head">
           <div>
-            <span>轻后台</span>
+            <span>生成记录</span>
             <h2>历史记录</h2>
           </div>
           <button className="icon-action" aria-label="关闭" onClick={props.onClose}>
@@ -2257,6 +2643,7 @@ function HistoryDrawer(props: {
             清空记录
           </button>
         </div>
+        {props.error && <div className="history-error">{props.error}</div>}
 
         <div className="product-library-plan">
           <strong>产品库</strong>
@@ -2278,31 +2665,144 @@ function HistoryDrawer(props: {
             <div className="history-empty">暂无记录</div>
           ) : (
             props.items.map((item) => (
-              <article className="history-item" key={item.id}>
-                <div>
-                  <span className="history-type">{item.type}</span>
-                  <strong>{item.title}</strong>
-                  <small>{item.time}</small>
-                </div>
-                <div className="history-side">
-                  <span
-                    className={cn(
-                      "history-status",
-                      item.status === "成功" && "ok",
-                      item.status === "失败" && "fail",
-                    )}
-                  >
-                    {item.status}
-                  </span>
-                  <button className="icon-action subtle" aria-label="删除记录" onClick={() => props.onRemove(item.id)}>
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+              <article className={cn("history-item", expandedId === item.id && "expanded")} key={item.id}>
+                <button
+                  className="history-item-main"
+                  type="button"
+                  onClick={() => setExpandedId((current) => (current === item.id ? "" : item.id))}
+                  aria-expanded={expandedId === item.id}
+                >
+                  <div>
+                    <span className="history-type">{item.type}</span>
+                    <strong>{item.title}</strong>
+                    <small>{item.time}</small>
+                  </div>
+                  <div className="history-side">
+                    <span
+                      className={cn(
+                        "history-status",
+                        item.status === "成功" && "ok",
+                        item.status === "失败" && "fail",
+                      )}
+                    >
+                      {item.status}
+                    </span>
+                    <ChevronDown size={16} />
+                  </div>
+                </button>
+                {expandedId === item.id && <HistoryDetail item={item} onOpenItem={() => props.onOpenItem(item)} />}
+                <button className="icon-action subtle history-remove" aria-label="删除记录" onClick={() => props.onRemove(item.id)}>
+                  <Trash2 size={15} />
+                </button>
               </article>
             ))
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function HistoryDetail(props: { item: HistoryItem; onOpenItem: () => void }) {
+  const storedAssetUrl = props.item.videoUrl || props.item.firstFrameUrl || props.item.detailUrl || "";
+  const [resolvedAssetUrl, setResolvedAssetUrl] = useState(storedAssetUrl);
+  const [assetLoading, setAssetLoading] = useState(isHistoryAssetRef(storedAssetUrl));
+  const assetUrl = isHistoryAssetRef(storedAssetUrl) ? resolvedAssetUrl : storedAssetUrl;
+  const isVideoAsset = Boolean(props.item.videoUrl);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedAssetUrl(isHistoryAssetRef(storedAssetUrl) ? "" : storedAssetUrl);
+    setAssetLoading(isHistoryAssetRef(storedAssetUrl));
+    if (!isHistoryAssetRef(storedAssetUrl)) return;
+    readHistoryAsset(storedAssetUrl).then((url) => {
+      if (cancelled) return;
+      setResolvedAssetUrl(url);
+      setAssetLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [storedAssetUrl]);
+
+  const rows = [
+    ["产品", props.item.productType],
+    ["场景", props.item.sceneTitle],
+    ["模型", props.item.model],
+    ["画面比例", props.item.aspectRatio],
+    ["视频时长", props.item.duration ? `${props.item.duration} 秒` : ""],
+    ["动作模式", props.item.motionMode],
+    ["任务号", props.item.taskId || props.item.id],
+  ].filter(([, value]) => Boolean(value));
+
+  return (
+    <div className="history-detail">
+      {assetLoading && <div className="history-asset-loading">正在恢复这条历史记录里的资产...</div>}
+      {assetUrl && (
+        <div className="history-asset-preview">
+          {isVideoAsset ? (
+            <video controls playsInline src={assetUrl} />
+          ) : (
+            <img src={assetUrl} alt={`${props.item.title}资产预览`} />
+          )}
+        </div>
+      )}
+      <div className="history-detail-actions">
+        <button className="primary-action compact-action" type="button" onClick={props.onOpenItem}>
+          载入到当前流程
+        </button>
+        {assetUrl && (
+          <a className="secondary-action compact-action" href={assetUrl} target="_blank" rel="noreferrer">
+            单独打开资产
+          </a>
+        )}
+      </div>
+      <div className="history-detail-grid">
+        {rows.map(([label, value]) => (
+          <span key={label}>
+            <b>{label}</b>
+            <em>{value}</em>
+          </span>
+        ))}
+      </div>
+      {props.item.scenePrompt && (
+        <div className="history-detail-text">
+          <b>首帧提示词</b>
+          <p>{props.item.scenePrompt}</p>
+        </div>
+      )}
+      {props.item.videoPrompt && (
+        <div className="history-detail-text">
+          <b>视频提示词</b>
+          <p>{props.item.videoPrompt}</p>
+        </div>
+      )}
+      {props.item.error && (
+        <div className="history-detail-text error">
+          <b>失败原因</b>
+          <p>{props.item.error}</p>
+        </div>
+      )}
+      {props.item.productViewUrls && props.item.productViewUrls.length > 0 && (
+        <div className="history-asset-strip">
+          <b>产品四视图</b>
+          <div>
+            {props.item.productViewUrls.map((url, index) => (
+              <img src={url} alt={`产品视图 ${index + 1}`} key={`${url}-${index}`} />
+            ))}
+          </div>
+        </div>
+      )}
+      {props.item.referenceVideoUrls && props.item.referenceVideoUrls.length > 0 && (
+        <div className="history-reference-list">
+          <b>参考视频</b>
+          {props.item.referenceVideoUrls.map((url, index) => (
+            <a href={url} target="_blank" rel="noreferrer" key={`${url}-${index}`}>
+              参考视频 {index + 1}
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

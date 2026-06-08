@@ -99,19 +99,51 @@ const checks = [
       serverSource.includes("same-product support evidence only"),
   },
   {
-    name: "dice buttons call the connected prompt model",
+    name: "paired dice calls the connected prompt model",
     pass:
       appSource.includes("Dices") &&
       appSource.includes("prompt-label-row") &&
+      appSource.includes("prompt-pair-grid") &&
       appSource.includes("dice-action") &&
-      appSource.includes("requestPromptSuggestion") &&
-      appSource.includes("scene_prompt: scenePrompt") &&
+      appSource.includes("requestPromptPairSuggestion") &&
+      appSource.includes('const [scenePrompt, setScenePrompt] = useState("")') &&
+      appSource.includes('const [videoActionPrompt, setVideoActionPrompt] = useState("")') &&
+      appSource.includes("promptsReady = Boolean(scenePrompt.trim()) && Boolean(videoActionPrompt.trim())") &&
+      appSource.includes("请先点击骰子生成首帧和视频提示词，再生成首帧") &&
+      appSource.includes('placeholder="点击骰子生成"') &&
+      !appSource.includes("prompt-source-row") &&
+      !appSource.includes("prompt-empty-state") &&
+      !appSource.includes("点击骰子后，系统会调用提示词模型生成同一场景下的首帧提示词和视频提示词") &&
+      !appSource.includes("function createDefaultScenePrompt") &&
+      !appSource.includes("明亮商场或超市通道，真人穿着上传四视图中的奶牛充气服") &&
+      appSource.includes('kind: "pair"') &&
+      !appSource.includes("scene_prompt: scenePrompt,\n          reference_video_count") &&
       appSource.includes('fetch("/api/prompt-suggestion"') &&
       appSource.includes("promptModel") &&
       serverSource.includes("/api/prompt-suggestion") &&
       serverSource.includes("proxyPromptSuggestion") &&
-      serverSource.includes("buildPromptSuggestionPayload") &&
-      serverSource.includes("只输出一段中文提示词"),
+      serverSource.includes("提示词模型还没有配置好") &&
+      serverSource.includes("提示词模型暂时不可用") &&
+      serverSource.includes("UPSTREAM_TIMEOUT_MS = 360000") &&
+      serverSource.includes("AbortController") &&
+      serverSource.includes("上游图片服务连接失败") &&
+      appSource.includes("prepareFirstFrameReferenceDataUrl") &&
+      appSource.includes("FIRST_FRAME_REFERENCE_MAX_EDGE") &&
+      !serverSource.includes("fallbackReason") &&
+      !serverSource.includes("function buildLocalPromptPairSuggestion") &&
+      !serverSource.includes("function buildLocalPromptSuggestion") &&
+      serverSource.includes("buildPromptPairSuggestionPayload") &&
+      serverSource.includes("firstFramePrompt") &&
+      serverSource.includes("videoPrompt") &&
+      serverSource.includes("只输出一个合法 JSON 对象"),
+  },
+  {
+    name: "first-frame resolution UI only shows supported 1080p",
+    pass:
+      appSource.includes("清晰度") &&
+      appSource.includes("1080p") &&
+      !appSource.includes("4K UHD") &&
+      !appSource.includes(">4K<"),
   },
   {
     name: "image and prompt API credentials are backend-fixed, not user-entered",
@@ -151,7 +183,7 @@ const checks = [
       serverSource.includes('role: "first_frame"') &&
       serverSource.includes("metadata") &&
       serverSource.includes("image_urls: [firstFrameUrl]") &&
-      serverSource.includes("视频生成必须提交已确认首帧 image_url") &&
+      serverSource.includes("请先确认首帧，再生成视频") &&
       serverSource.includes("hasVideoApiKey") &&
       appSource.includes('videoBaseUrl: "https://ai.wisech.com/v1"') &&
       appSource.includes('const DEFAULT_VIDEO_MODEL = "doubao-seedance-2-0-260128"') &&
@@ -222,43 +254,65 @@ const checks = [
       serverSource.includes("COW HARD FAIL DETAILS") &&
       serverSource.includes("SUMO HARD FAIL DETAILS") &&
       serverSource.includes("buildVideoFirstFramePixelAnchorLocks(productType)") &&
-      appSource.includes("像“我不是鲨鱼我只是路过”") &&
-      appSource.includes("像被一个价签或袋子上的字问住了") &&
-      appSource.includes("像忘词一样慢慢收回手") &&
-      appSource.includes("像输给了空气") &&
-      appSource.includes("全程锁定首帧像素身份") &&
-      appSource.includes("不能重排双手或替换道具接触关系") &&
-      appSource.includes("尾鳍、鞋子和薄尼龙/PVC褶皱都不漂移"),
+      serverSource.includes("Preserve all identity-critical product details") &&
+      serverSource.includes("no pose reblocking that changes the costume") &&
+      serverSource.includes("no moved fan valve") &&
+      !appSource.includes("像“我不是鲨鱼我只是路过”"),
   },
   {
-    name: "video prompt dice generates lively humorous motion while preserving product locks",
+    name: "paired prompt dice generates diverse scene-consistent video motion",
     pass:
-      serverSource.includes("有一点搞笑甚至搞怪") &&
-      serverSource.includes("喜剧动作脚本") &&
-      serverSource.includes("2-3 个节拍的小短剧") &&
-      serverSource.includes("必须有一个明确笑点") &&
-      serverSource.includes("不要输出产品说明书") &&
-      serverSource.includes("前 2 句不得出现阀门、拉链、PVC、缝线、泵口、体积包络") &&
-      serverSource.includes("最后一句自然带过这些产品锁即可") &&
-      serverSource.includes("允许一个较明显但产品安全的大动作") &&
-      serverSource.includes("不能只是站着不动") &&
-      serverSource.includes("戏剧性来自场景反差") &&
-      serverSource.includes("输出开头必须是当前首帧场景动作") &&
-      serverSource.includes("当前首帧场景上下文") &&
-      serverSource.includes("不要让整段变成阀门、拉链、材质的清单") &&
-      serverSource.includes("严禁更换首帧场景类型") &&
+      serverSource.includes("PROMPT_SCENE_BANK") &&
+      serverSource.includes("pickPromptSceneExamples") &&
+      serverSource.includes("const sceneExamples = pickPromptSceneExamples()") &&
+      !serverSource.includes("const sceneExamples = PROMPT_SCENE_BANK") &&
+      serverSource.includes("sceneTitle") &&
+      serverSource.includes("sceneAnchor") &&
+      serverSource.includes("firstFramePrompt") &&
+      serverSource.includes("videoPrompt") &&
+      serverSource.includes("continuityLocks") &&
+      serverSource.includes("必须调用真实模型创作，不要套用固定模板") &&
+      serverSource.includes("场景要高度多样") &&
+      serverSource.includes("避免反复使用明亮超市、明亮商场、办公室、电梯") &&
+      serverSource.includes("一个明确的小反转或包袱") &&
+      serverSource.includes("BGM 和背景对话不是强制项") &&
+      serverSource.includes("只输出一个合法 JSON 对象") &&
       serverSource.includes("SCENE ANCHOR") &&
-      serverSource.includes("至少两个原有道具词") &&
-      serverSource.includes("必须点名当前产品") &&
       serverSource.includes("getProductStableName") &&
       serverSource.includes("stable product name") &&
-      serverSource.includes("不要换场景，不要换产品名") &&
-      serverSource.includes("不要把原场景替换成相似场景") &&
       serverSource.includes("sanitizeVideoPromptText") &&
+      serverSource.includes("sanitizeUpstreamVideoPromptText") &&
+      serverSource.includes("strictly consistent across all frames") &&
+      serverSource.includes("isSensitiveTextError") &&
+      serverSource.includes("createSensitiveSafeVideoPayload") &&
+      serverSource.includes("InputTextSensitiveContentDetected") &&
+      serverSource.includes("MOTION AMPLITUDE CEILING") &&
+      serverSource.includes("脸窗和拉链基本保持竖直") &&
+      serverSource.includes("禁止大幅前倾、弯腰、转体、抬高脚") &&
       serverSource.includes("可以写手持杯子、袋子、工具、标牌") &&
-      serverSource.includes("不能变成产品新增组件") &&
-      serverSource.includes("InputTextSensitiveContentDetected") === false &&
-      serverSource.includes("避免偷、被发现、推、撞、吓、攻击、摔倒、危险、求助"),
+      !appSource.includes("可以有轻快BGM或背景小声吐槽，但不是必须") &&
+      !appSource.includes("像正式输给了空气"),
+  },
+  {
+    name: "user-facing errors are natural language",
+    pass:
+      appSource.includes("这次视频描述被平台安全规则拦下了") &&
+      appSource.includes("可以把动作改得更日常一点") &&
+      appSource.includes("这次没有拿到完整提示词，请再点一次骰子") &&
+      appSource.includes("服务密钥还没有配置好，请先让管理员确认后台配置") &&
+      appSource.includes("这次请求没有成功，请稍后再试") &&
+      appSource.includes("getBase64ImageMime") &&
+      appSource.includes("上游这次没有返回真正的图片，而是返回了网页验证内容") &&
+      serverSource.includes("这次视频描述被平台安全规则拦下了") &&
+      serverSource.includes("可以把动作改得更日常一点") &&
+      serverSource.includes("validateGeneratedImagePayload") &&
+      serverSource.includes("UPSTREAM_NON_IMAGE_RESULT") &&
+      serverSource.includes("上游这次没有返回真正的图片，而是返回了网页验证内容") &&
+      serverSource.includes("请先确认首帧，再生成视频") &&
+      serverSource.includes("服务密钥还没有配置好，请先让管理员确认后台配置") &&
+      serverSource.includes("toPublicErrorMessage") &&
+      appSource.includes("toUserMessage") &&
+      !appSource.includes('throw new Error("Pair prompt model did not return parseable JSON'),
   },
   {
     name: "video waiting state uses approved first frame instead of unrelated loading media",
@@ -279,10 +333,11 @@ const checks = [
     name: "OpenAI-compatible image edits are sent as multipart references",
     pass:
       serverSource.includes("buildOpenAIImageEditFormData") &&
-      serverSource.includes('form.append("image"') &&
+      serverSource.includes('form.append("image[]"') &&
       serverSource.includes("sendMultipartImageEdit") &&
       serverSource.includes("data:image/") &&
-      serverSource.includes("Only data:image/ or http(s) image inputs are supported"),
+      serverSource.includes("Only data:image/ or http(s) image inputs are supported") &&
+      appSource.includes("prepareFirstFramePayloadForSubmit"),
   },
   {
     name: "four-view workflow still gates first frame and video generation",
@@ -293,25 +348,41 @@ const checks = [
       appSource.includes("firstFrameReady = uploadReady && allLocksConfirmed") &&
       appSource.includes("videoReady = firstFrameReady && Boolean(approvedFirstFrameUrl.trim()) && firstFrameApproved") &&
       serverSource.includes("validateFourViewImages") &&
-      serverSource.includes("need exactly four readable core product view images") &&
+      serverSource.includes("请上传正面、左侧、右侧、背面四张可用的核心产品图") &&
       serverSource.includes("CORE_VIEW_INPUT_ORDER") &&
       serverSource.includes("FOUR-VIEW REFERENCES ARE TOPOLOGY MAPS"),
   },
   {
-    name: "first-frame review opens video editor or regeneration without auto-submitting video",
+    name: "first-frame review opens video settings without auto-submitting",
     pass:
       appSource.includes("createPassedFirstFrameReviewState") &&
       appSource.includes("approveFirstFrameAndOpenVideoStep") &&
       appSource.includes("setFirstFrameReviewState(createPassedFirstFrameReviewState())") &&
-      appSource.includes("请在视频页确认或修改提示词后手动生成") &&
+      appSource.includes("通过首帧，进入视频设置") &&
       !appSource.includes('await callBackend("video")') &&
       appSource.includes("regenerateFirstFrameFromReview") &&
       normalizedAppSource.includes('if (kind === "firstFrame") {\n      setApprovedFirstFrameUrl("");\n      setFirstFrameApproved(false);\n      setFirstFrameReviewState(createFirstFrameReviewState());\n    }') &&
       appSource.includes("allFirstFrameReviewChecksResolved") &&
-      appSource.includes("进入重新生成") &&
-      appSource.includes("一键全部通过") &&
+      appSource.includes("按错误项重新生成首帧") &&
+      appSource.includes("{props.hasFailedReviewChecks && (") &&
+      appSource.includes("请在视频页确认模型、参数和动作强度后手动生成") &&
+      !normalizedAppSource.includes("function VideoStep(props: {\n  prompt: string;") &&
       appSource.includes("usesFixedVideoBackend") &&
       appSource.includes("const videoApiKeyForRequest = usesFixedVideoBackend ? \"\" : apiSettings.videoApiKey"),
+  },
+  {
+    name: "first-frame regeneration uses user review feedback without changing the prompt",
+    pass:
+      appSource.includes("createFirstFrameReviewFeedback") &&
+      appSource.includes("targeted-first-frame-regeneration") &&
+      appSource.includes("prompt_unchanged: true") &&
+      appSource.includes("previous_first_frame_url: previousFirstFrameUrl") &&
+      appSource.includes("review_feedback: createFirstFrameReviewFeedback(firstFrameReviewState)") &&
+      serverSource.includes("TARGETED REGENERATION FEEDBACK FROM USER REVIEW") &&
+      serverSource.includes("Correct only the failed checklist items") &&
+      serverSource.includes("Passed checklist items to keep stable") &&
+      serverSource.includes("previous_first_frame_count") &&
+      serverSource.includes("Previous generated first frame for targeted regeneration"),
   },
   {
     name: "video prompt edits do not invalidate approved first frame",
@@ -340,6 +411,8 @@ const checks = [
       appSource.includes("videoai.apiSettings") &&
       appSource.includes("window.localStorage.setItem") &&
       appSource.includes("loadApiSettings") &&
+      appSource.includes("function saveApiSettings") &&
+      appSource.includes("saveApiSettings(apiSettings)") &&
       appSource.includes('const DEFAULT_PROMPT_MODEL = "gpt-5.4-mini"') &&
       appSource.includes('const DEFAULT_IMAGE_MODEL = "gpt-image-2"') &&
       appSource.includes("merged.imagePath") &&
@@ -349,14 +422,38 @@ const checks = [
     name: "generation history is persisted locally",
     pass:
       appSource.includes('const HISTORY_STORAGE_KEY = "videoai.historyItems"') &&
-      appSource.includes("const MAX_HISTORY_ITEMS = 60") &&
+      appSource.includes("const MAX_HISTORY_ITEMS = 30") &&
       appSource.includes("function loadHistoryItems") &&
       appSource.includes("function isHistoryItem") &&
       appSource.includes("function upsertHistoryItem") &&
+      appSource.includes("function formatHistoryTime") &&
+      appSource.includes("const HISTORY_ASSET_DB_NAME") &&
+      appSource.includes("const HISTORY_ASSET_REF_PREFIX") &&
+      appSource.includes("function sanitizeHistoryItemForStorage") &&
+      appSource.includes("function saveHistoryItems") &&
+      appSource.includes("function writeHistoryItemAssets") &&
+      appSource.includes("function resolveHistoryItemAssets") &&
+      appSource.includes("function isLargeInlineAsset") &&
+      appSource.includes("window.indexedDB.open") &&
+      appSource.includes("function HistoryDetail") &&
+      appSource.includes("createdAt: now.toISOString()") &&
+      appSource.includes("firstFrameUrl") &&
+      appSource.includes("videoUrl") &&
+      appSource.includes("productViewUrls") &&
+      appSource.includes("载入到当前流程") &&
+      appSource.includes("单独打开资产") &&
+      appSource.includes("history-asset-preview") &&
+      appSource.includes("onOpenItem={openHistoryItem}") &&
+      appSource.includes("历史记录") &&
+      !appSource.includes(">轻后台<") &&
       appSource.includes("useState<HistoryItem[]>(() => loadHistoryItems())") &&
       appSource.includes("window.localStorage.setItem(HISTORY_STORAGE_KEY") &&
-      appSource.includes("historyItems.slice(0, MAX_HISTORY_ITEMS)") &&
-      appSource.includes("createHistoryItem(newTaskId || `LOCAL-${Date.now()}`, kind, nextHistoryStatus)") &&
+      appSource.includes("saveHistoryItems(historyItems)") &&
+      appSource.includes("window.localStorage.removeItem(HISTORY_STORAGE_KEY)") &&
+      appSource.includes("items.slice(0, MAX_HISTORY_ITEMS).map(sanitizeHistoryItemForStorage)") &&
+      !appSource.includes("JSON.stringify(historyItems.slice(0, MAX_HISTORY_ITEMS))") &&
+      appSource.includes("createHistoryItem(newTaskId || `LOCAL-${Date.now()}`, kind, nextHistoryStatus, historyDetail)") &&
+      appSource.includes("createHistoryDetail(kind, nextHistoryStatus") &&
       !appSource.includes('id: "H-2401"') &&
       !appSource.includes('title: "海边便利店首帧"'),
   },
