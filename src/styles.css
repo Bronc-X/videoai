@@ -761,6 +761,12 @@ textarea:focus {
   color: var(--ok);
 }
 
+.field-error.info {
+  border-color: rgba(0, 104, 117, 0.18);
+  background: rgba(222, 248, 251, 0.7);
+  color: var(--primary);
+}
+
 .two-col {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;
@@ -922,7 +928,7 @@ textarea:focus {
 
 .first-frame-review {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -2331,6 +2337,10 @@ textarea:focus {
   line-height: 1.65;
 }
 
+.prompt-pair-grid textarea {
+  min-height: clamp(220px, 24vh, 340px);
+}
+
 .prompt-label-row span,
 .api-fixed-note strong,
 label {
@@ -2345,34 +2355,38 @@ label {
 }
 
 .first-frame-review {
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 14px;
+  width: min(100%, 680px);
+  justify-self: center;
+  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  gap: 10px;
   align-items: stretch;
+  opacity: 0.86;
 }
 
 .review-pane {
-  min-height: 226px;
-  padding: 12px;
-  gap: 9px;
-  border-radius: 14px;
+  min-height: 0;
+  padding: 9px;
+  gap: 7px;
+  border-radius: 12px;
+  box-shadow: none;
 }
 
 .review-pane-head strong {
-  font-size: 15px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .review-pane-head span {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .review-image {
   width: 100%;
-  height: clamp(170px, 17vw, 260px);
+  height: clamp(92px, 9vw, 140px);
   max-height: none;
   aspect-ratio: auto;
-  padding: 8px;
-  border-radius: 10px;
+  padding: 6px;
+  border-radius: 9px;
   background:
     linear-gradient(45deg, rgba(255, 255, 255, 0.74) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(255, 255, 255, 0.74) 25%, transparent 25%),
@@ -2383,27 +2397,23 @@ label {
   background-size: 16px 16px;
 }
 
-.first-frame-review .review-pane:last-child {
-  display: none;
-}
-
 .generated-frame {
-  width: min(100%, 480px);
-  padding: 10px;
+  width: min(100%, 680px);
+  padding: 12px;
   justify-self: center;
-  margin-top: 2px;
+  margin: 0 auto;
 }
 
 .media-ratio-9-16 {
-  width: min(100%, 360px, calc((100vh - 220px) * 9 / 16));
+  width: min(100%, 520px, calc((100vh - 170px) * 9 / 16));
 }
 
 .media-ratio-1-1 {
-  width: min(100%, 560px, calc(100vh - 220px));
+  width: min(100%, 660px, calc(100vh - 170px));
 }
 
 .media-ratio-16-9 {
-  width: min(100%, 860px, calc((100vh - 220px) * 16 / 9));
+  width: min(100%, 920px, calc((100vh - 170px) * 16 / 9));
 }
 
 .frame-placeholder {
@@ -2412,7 +2422,7 @@ label {
 }
 
 .frame-placeholder.compact {
-  min-height: 180px;
+  min-height: 108px;
 }
 
 .render-badges {

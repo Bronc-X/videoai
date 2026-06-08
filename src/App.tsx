@@ -814,6 +814,18 @@ function cn(...items: Array<string | false | null | undefined>) {
   return items.filter(Boolean).join(" ");
 }
 
+function getStatusMessageTone(message: string): "success" | "info" | "" {
+  const text = message.trim();
+  if (!text) return "";
+  const errorWords = ["没有成功", "没有生成", "失败", "未通过", "不可用", "请先", "暂时", "错误", "异常", "超时", "连不上", "不能"];
+  if (errorWords.some((word) => text.includes(word))) return "";
+  const successWords = ["成功", "已生成", "生成好了", "已一起更新", "已通过", "已从历史记录载入", "连接正常"];
+  if (successWords.some((word) => text.includes(word))) return "success";
+  const progressWords = ["已经开始生成", "生成中", "已检查", "任务号"];
+  if (progressWords.some((word) => text.includes(word))) return "info";
+  return "";
+}
+
 function loadApiSettings(): ApiSettings {
   if (typeof window === "undefined") return defaultApiSettings;
   try {
@@ -2221,12 +2233,30 @@ function FirstFrameStep(props: {
   onSuggestPrompt: () => void;
   onGenerate: () => void;
 }) {
+  const generatedFrame = (
+    <div className={cn("generated-frame", `media-ratio-${props.aspectRatio.replace(":", "-")}`)}>
+      <div className="render-badges">
+        <span className={props.approvedUrl ? "render-ok" : ""}>{props.approvedUrl ? "已载入" : "待生成"}</span>
+        <span>{props.isApproved ? "已过审" : "首帧不过审，不进入视频"}</span>
+      </div>
+      {props.approvedUrl ? (
+        <img className="preview-image" src={props.approvedUrl} alt="首帧预览" />
+      ) : (
+        <div className="frame-placeholder">
+          <Wand2 size={44} />
+          <strong>首帧预览</strong>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <section className="stage-panel">
       <StageHeader eyebrow="第 2 步" title="四视图合成首帧" />
       <div className="lock-note">一致性规则：正面、左侧、右侧、背面四张核心视图优先于场景创意。人体体型包络、尺寸、比例、轮廓必须接近四视图，不能变成巨大圆顶、桶状身体、站立气球或吉祥物外壳；阀门方向、尾鳍、鳃线、脸窗必须归位，看不见的结构隐藏，不挪位。</div>
       <div className="two-col">
         <div className="stack">
+          {props.approvedUrl && generatedFrame}
           <div className="scenario-card prompt-card prompt-pair-card">
             <div className="prompt-label-row">
               <span>同步提示词</span>
@@ -2262,6 +2292,7 @@ function FirstFrameStep(props: {
             </div>
             {props.promptMeta.continuityLocks && <p className="prompt-continuity">{props.promptMeta.continuityLocks}</p>}
           </div>
+          {!props.approvedUrl && generatedFrame}
           <div className="first-frame-review">
             {props.productViews.map((slot) => (
               <div className="review-pane" key={slot.id}>
@@ -2279,34 +2310,6 @@ function FirstFrameStep(props: {
                 )}
               </div>
             ))}
-            <div className="review-pane">
-              <div className="review-pane-head">
-                <strong>生成首帧</strong>
-                <span>{props.isApproved ? "已人工确认" : "待人工确认"}</span>
-              </div>
-              {props.approvedUrl ? (
-                <img className="review-image" src={props.approvedUrl} alt="首帧预览" />
-              ) : (
-                <div className="frame-placeholder compact">
-                  <Wand2 size={34} />
-                  <strong>首帧预览</strong>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className={cn("generated-frame", `media-ratio-${props.aspectRatio.replace(":", "-")}`)}>
-            <div className="render-badges">
-              <span className={props.approvedUrl ? "render-ok" : ""}>{props.approvedUrl ? "已载入" : "待生成"}</span>
-              <span>{props.isApproved ? "已过审" : "首帧不过审，不进入视频"}</span>
-            </div>
-            {props.approvedUrl ? (
-              <img className="preview-image" src={props.approvedUrl} alt="首帧预览" />
-            ) : (
-              <div className="frame-placeholder">
-                <Wand2 size={44} />
-                <strong>首帧预览</strong>
-              </div>
-            )}
           </div>
           {props.approvedUrl && (
             <div className="review-checklist">
@@ -2391,9 +2394,7 @@ function FirstFrameStep(props: {
           </div>
           <label>
             清晰度
-            <div className="pill-grid">
-              <button type="button" className="active">1080p</button>
-            </div>
+            <div className="resolution-value">1080p</div>
           </label>
           <label>
             画面比例
@@ -2417,7 +2418,7 @@ function FirstFrameStep(props: {
               根据核心四视图生成首帧
             </button>
           )}
-          {props.error && <div className={cn("field-error", props.error.includes("成功") && "success")}>{props.error}</div>}
+          {props.error && <div className={cn("field-error", getStatusMessageTone(props.error))}>{props.error}</div>}
           {!props.canGenerate && !props.approvedUrl && (
             <div className="field-hint">请先点击骰子生成首帧和视频提示词，再生成首帧。</div>
           )}
@@ -2542,7 +2543,7 @@ function VideoStep(props: {
             {isWorking ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
             {isWorking ? "生成中" : "生成视频"}
           </button>
-          {props.error && <div className={cn("field-error", props.error.includes("成功") && "success")}>{props.error}</div>}
+          {props.error && <div className={cn("field-error", getStatusMessageTone(props.error))}>{props.error}</div>}
         </div>
       </div>
     </section>
